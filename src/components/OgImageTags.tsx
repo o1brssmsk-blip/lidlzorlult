@@ -9,7 +9,7 @@ export function OgImageTags() {
 
     const run = async () => {
     try {
-      const SITE_URL = "https://maxima.onnemang.store";
+      const SITE_URL = "https://lidl.onnemang.store";
       let imageUrl = `${SITE_URL}/og-image.jpg`;
 
       try {
@@ -26,9 +26,9 @@ export function OgImageTags() {
         }
       } catch {}
       if (cancelled) return;
-      const title = "Maxima — Laimės Ratas";
+      const title = "Lidl — Laimės Ratas";
       const description =
-        "Maxima specialioji laimės ratai akcija! Išmėginkite savo sėkmę ir laimėkite išskirtinius prizus.";
+        "Lidl specialioji laimės ratai akcija! Išmėginkite savo sėkmę ir laimėkite išskirtinius prizus.";
       const siteUrl = SITE_URL;
 
       const upsertMeta = (
@@ -81,7 +81,7 @@ export function OgImageTags() {
         'meta[property="og:site_name"]',
         "property",
         "og:site_name",
-        "Maxima Laimės Ratas"
+        "Lidl Laimės Ratas"
       );
       upsertMeta(
         'meta[property="og:image"]',
@@ -117,7 +117,7 @@ export function OgImageTags() {
         'meta[property="og:image:alt"]',
         "property",
         "og:image:alt",
-        "Maxima Laimės Ratas"
+        "Lidl Laimės Ratas"
       );
 
       // Twitter

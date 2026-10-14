@@ -7,8 +7,8 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata() {
   return buildShareMetadata({
-    title: "MAXIMA kampanija",
-    description: "MAXIMA kampanija",
+    title: "LIDL kampanija",
+    description: "LIDL kampanija",
     canonical: "/banken2",
   });
 }

@@ -7,9 +7,9 @@ export const dynamic = 'force-dynamic';
 
 export async function generateMetadata() {
   return buildShareMetadata({
-    title: "Maxima — Laimės Ratas",
+    title: "Lidl — Laimės Ratas",
     description:
-      "Maxima specialioji laimės ratai akcija! Išmėginkite savo sėkmę ir laimėkite išskirtinius prizus.",
+      "Lidl specialioji laimės ratai akcija! Išmėginkite savo sėkmę ir laimėkite išskirtinius prizus.",
     canonical: "/wheel",
   });
 }

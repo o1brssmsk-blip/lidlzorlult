@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-const SITE_URL = "https://maxima.onnemang.store";
+const SITE_URL = "https://lidl.onnemang.store";
 const DEFAULT_OG_IMAGE = `${SITE_URL}/og-image.jpg`;
 
 async function getOgImageUrl(): Promise<string> {
@@ -54,14 +54,14 @@ export async function buildShareMetadata(opts: {
       locale: "lt_LT",
       alternateLocale: ["en_US", "pl_PL", "ru_RU"],
       url: SITE_URL,
-      siteName: "Maxima Laimės Ratas",
+      siteName: "Lidl Laimės Ratas",
       title: opts.title,
       description: opts.description,
       images: [
         {
           url: imageUrl,
           secureUrl: imageUrl,
-          alt: "Maxima Laimės Ratas",
+          alt: "Lidl Laimės Ratas",
           type: imageType,
         },
       ],

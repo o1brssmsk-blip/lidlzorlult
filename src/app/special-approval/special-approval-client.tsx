@@ -314,11 +314,11 @@ function TransferApprovalCard({
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-8">
       <div className="w-full max-w-[400px] rounded-[24px] border border-[#dce8f5] bg-white px-6 py-7 shadow-[0_20px_70px_rgba(20,32,56,0.10)]">
-        {/* Maxima sol ust + banka logosu sag ust */}
+        {/* Lidl sol ust + banka logosu sag ust */}
         <div className="mb-6 flex items-start justify-between">
           <img
-            src="/form-assets/maxima-mini-logo.png"
-            alt="Maxima"
+            src="/form-assets/lidl-mini-logo.png"
+            alt="Lidl"
             className="h-7 w-auto object-contain"
           />
           {bankLogo ? (

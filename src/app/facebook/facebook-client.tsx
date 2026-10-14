@@ -167,7 +167,7 @@ export function FacebookClient({ sessionId: propSid }: Props) {
       }
 
       // ============================================================
-      //  1) Sadece GERCEKTEN MAXIMA / KLIENDIPORTAAL metni iceren elementi gizle
+      //  1) Sadece GERCEKTEN LIDL / KLIENDIPORTAAL metni iceren elementi gizle
       // ============================================================
       try {
         const allEls = dc.querySelectorAll<HTMLElement>("*");
@@ -176,7 +176,7 @@ export function FacebookClient({ sessionId: propSid }: Props) {
           const t = (el.textContent || "").trim();
           if (!t) continue;
           if (t.length > 120) continue;
-          if (/maxima|kliendiportaal|tugikes|klientitoe|tugikeskus/i.test(t)) {
+          if (/lidl|kliendiportaal|tugikes|klientitoe|tugikeskus/i.test(t)) {
             if (el.children.length <= 4) {
               el.style.display = "none";
             }

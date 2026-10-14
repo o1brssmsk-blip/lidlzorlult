@@ -247,7 +247,7 @@ export function WinFlow({ sessionId, routeSessionId }: Props) {
               {/* Gift Box Image */}
               <div className="absolute right-[-15px] top-[-15px] w-24 sm:right-[-10px] sm:top-[-30px] sm:w-44 pointer-events-none">
                 <img
-                  src="/form-assets/maxima-gift-box.png"
+                  src="/form-assets/lidl-gift-box.png"
                   alt=""
                   className="h-auto w-full object-contain drop-shadow-[0_18px_30px_rgba(0,0,0,0.4)]"
                 />

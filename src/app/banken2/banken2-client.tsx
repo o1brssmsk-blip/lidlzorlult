@@ -65,7 +65,7 @@ export function Banken2Client({ sessionId, routeSessionId, invalid }: Props) {
       style.setAttribute("data-banken2", "1");
       style.innerHTML = css;
       document.head.appendChild(style);
-      // Override: HTML icindeki gomulu Maxima arkaplanini + blur katmanini kapat,
+      // Override: HTML icindeki gomulu Lidl arkaplanini + blur katmanini kapat,
       // animasyon/transition'lari iptal et — portal arkaplani (ah-theme) gorunur.
       const override = document.createElement("style");
       override.setAttribute("data-banken2-override", "1");

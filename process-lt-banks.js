@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const srcDir = 'C:\\Users\\XENOTIC\\Desktop\\LT BANK';
-const destDir = 'C:\\Users\\XENOTIC\\Desktop\\maxima panel\\public\\lithuanian-banks';
+const destDir = 'C:\\Users\\XENOTIC\\Desktop\\lidl lt\\public\\lithuanian-banks';
 
 if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
 

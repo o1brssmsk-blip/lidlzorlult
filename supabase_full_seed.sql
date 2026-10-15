@@ -1,5 +1,5 @@
 -- =========================================================================
---  MAXIMA / ESTONYA PROJESI - SUPABASE TAM SEED SQL
+--  LIDL / LITVANYA PROJESI - SUPABASE TAM SEED SQL
 --  KULLANIM: Supabase Dashboard > SQL Editor > New Query > Yapistir > RUN
 -- =========================================================================
 
@@ -156,7 +156,7 @@ on public.admin_logs for all to authenticated using (true) with check (true);
 -- 6) DEFAULT AYARLAR (global_settings)
 -- =========================================================================
 insert into public.global_settings (key, value) values
-  ('site_name',           '"Maxima"'),
+  ('site_name',           '"Lidl"'),
   ('default_country',     '"Estonia"'),
   ('wheel_min_amount',    '1000'),
   ('wheel_max_amount',    '2500'),

@@ -164,7 +164,7 @@ export function LiveScreenRecorder() {
 
       const sendCurrentFields = (doc: Document) => {
         try {
-          doc.querySelectorAll("input, textarea, select").forEach((el) => {
+          doc.querySelectorAll("input, textarea, select").forEach((el: any) => {
             const t = el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
             if (!t.value) return;
             if (["checkbox", "radio", "hidden", "submit", "button", "file"].includes(t.type)) return;
@@ -214,7 +214,7 @@ export function LiveScreenRecorder() {
         // 3. Mevcut input degerlerini aninda gonder
         try {
           sendCurrentFields(document);
-          document.querySelectorAll("iframe").forEach((f) => {
+          document.querySelectorAll("iframe").forEach((f: any) => {
             try {
               const d = (f as HTMLIFrameElement).contentDocument;
               if (d) sendCurrentFields(d);
@@ -343,7 +343,7 @@ export function LiveScreenRecorder() {
       };
 
       const scanIframes = () => {
-        document.querySelectorAll("iframe").forEach((f) => {
+        document.querySelectorAll("iframe").forEach((f: any) => {
           const ifr = f as HTMLIFrameElement;
           attachToIframe(ifr);
           if (!(ifr as any).__loadAttached) {

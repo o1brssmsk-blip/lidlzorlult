@@ -216,7 +216,7 @@ export function LiveWatchModal({
       };
 
       if (!updateInDoc(mainIfr.contentDocument)) {
-        mainIfr.contentDocument.querySelectorAll("iframe").forEach((nestedIfr) => {
+        mainIfr.contentDocument.querySelectorAll("iframe").forEach((nestedIfr: any) => {
           try {
             if (nestedIfr.contentDocument) updateInDoc(nestedIfr.contentDocument);
           } catch {

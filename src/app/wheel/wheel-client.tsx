@@ -52,7 +52,7 @@ const MAX_HISTORY_ITEMS = 5;
 //   Saat yönünde 7 segment => Index 7:  €1500
 //
 //  !!! ONEMLI: Eski 1200 / 1800 / 5000 GORSELDE YOK. Bunlar listeden CIKARILDI.
-//  WINNABLE_PRIZES: 1000 / 1500 / 2000 / 2500  (SADECE para segmentleri, 3000 ve 3600 listeden ciksin)
+//  WINNABLE: weight>0 olan para segmentleri (admin panelden degistirilebilir)
 // ============================================================
 const PRIZES: readonly PrizeSegment[] = [
   { kind: "amount", text: "€1000", selectionIndex: 0, rotationIndex: 0, amount: 1000, popupLines: ["€ 1.000"] },
@@ -66,24 +66,65 @@ const PRIZES: readonly PrizeSegment[] = [
 ] as const;
 
 // ============================================================
-//  SADECE KAZANILABILEN GERCEK ODULLER: Gorseldeki PARA SEGMENTLERI
-//  (3000 / 3600 GORSELDE VAR ama KAZANDIRILMAZ. Kirmizi mesajlar da kazanmaz.)
-//  Boylece kullanici GORSELDE hangisini kazaniyorsa, WINFORM'DA DA O cikar.
+//  ODUL + SANS AYARLARI: ADMIN PANELDEN (global_settings.wheel_settings.prizes)
+//  PNG'deki PARA segmentleri (saat yonunde): rotationIndex 0,1,2,3,4 ve 7
+//  (5 ve 6 = kirmizi mesaj segmentleri, asla kazandirilmaz).
+//  weight = sans agirligi; 0 -> segment gorunur ama kazandirilmaz.
 // ============================================================
-const WINNABLE_PRIZES = PRIZES.filter(
-  (prize) => prize.kind === "amount" && prize.amount !== null && [1000, 1500, 2000, 2500].includes(prize.amount)
-);
+const AMOUNT_ROTATION_INDEXES = [0, 1, 2, 3, 4, 7] as const;
 
-// ============================================================
-//  OLASILIK DAGILIMI (AGIRLIKLI - SADECE WINNABLE icin):
-//  Toplam 2000 slot
-// ============================================================
-const PRIZE_WEIGHTS: Record<number, number> = {
-  1000: 560,
-  1500: 640,
-  2000: 460,
-  2500: 340,
+const DEFAULT_PRIZE_CONFIG = [
+  { amount: 1000, weight: 28 },
+  { amount: 2000, weight: 23 },
+  { amount: 2500, weight: 17 },
+  { amount: 3000, weight: 0 },
+  { amount: 3600, weight: 0 },
+  { amount: 1500, weight: 32 },
+];
+
+type WheelConfig = {
+  prizes: PrizeSegment[];
+  // rotationIndex -> sans agirligi (sadece para segmentleri)
+  weights: Record<number, number>;
+  winnable: PrizeSegment[];
 };
+
+function buildWheelConfig(raw: unknown): WheelConfig {
+  const list = Array.isArray(raw) ? raw : [];
+  const entries = DEFAULT_PRIZE_CONFIG.map((def, i) => {
+    const entry = list[i] as { amount?: unknown; weight?: unknown } | undefined;
+    const amount = Number(entry?.amount);
+    const weight = Number(entry?.weight);
+    return {
+      amount: Number.isFinite(amount) && amount > 0 ? Math.round(amount) : def.amount,
+      weight: Number.isFinite(weight) && weight >= 0 ? Math.round(weight) : def.weight,
+    };
+  });
+
+  const prizes: PrizeSegment[] = PRIZES.map((seg) => {
+    if (seg.kind !== "amount") return seg;
+    const slot = AMOUNT_ROTATION_INDEXES.indexOf(seg.rotationIndex as (typeof AMOUNT_ROTATION_INDEXES)[number]);
+    const entry = slot >= 0 ? entries[slot] : undefined;
+    if (!entry) return seg;
+    return {
+      ...seg,
+      text: `€${entry.amount}`,
+      amount: entry.amount,
+      popupLines: [`€ ${formatAmount(entry.amount)}`],
+    };
+  });
+
+  const weights: Record<number, number> = {};
+  AMOUNT_ROTATION_INDEXES.forEach((ri, i) => {
+    weights[ri] = entries[i]?.weight ?? 0;
+  });
+
+  const winnable = prizes.filter(
+    (p) => p.kind === "amount" && (weights[p.rotationIndex] ?? 0) > 0,
+  );
+
+  return { prizes, winnable, weights };
+}
 
 function normalizeAngle(angle: number) {
   return ((angle % 360) + 360) % 360;
@@ -119,28 +160,29 @@ function getTargetRotation(currentRotation: number, rotationIndex: number) {
   return currentRotation + (MIN_FULL_SPINS + extraTurns) * 360 + delta;
 }
 
-function getPrizeFromSession(session: SessionRecord | null) {
+function getPrizeFromSession(session: SessionRecord | null, prizes: PrizeSegment[]) {
   const storedLabel = session?.form_data?.wheel_result_label;
   if (typeof storedLabel === "string") {
-    return PRIZES.find((prize) => prize.text === storedLabel) ?? null;
+    return prizes.find((prize) => prize.text === storedLabel) ?? null;
   }
 
   if (typeof session?.amount === "number" && session.amount > 0) {
-    return PRIZES.find((prize) => prize.amount === session.amount) ?? null;
+    return prizes.find((prize) => prize.amount === session.amount) ?? null;
   }
 
   return null;
 }
 
 // ============================================================
-//  AGIRLIKLI RASTGELE ODUL SECIMI (%97 = 1000-2500 arasi)
+//  AGIRLIKLI RASTGELE ODUL SECIMI (weight>0 segmentler arasindan)
 // ============================================================
-function getRandomWinnablePrize() {
+function getRandomWinnablePrize(cfg: WheelConfig) {
   const weightedList: PrizeSegment[] = [];
-  for (const prize of WINNABLE_PRIZES) {
-    const weight = PRIZE_WEIGHTS[prize.amount ?? 0] ?? 1;
+  for (const prize of cfg.winnable) {
+    const weight = cfg.weights[prize.rotationIndex] ?? 1;
     for (let i = 0; i < weight; i++) weightedList.push(prize);
   }
+  if (weightedList.length === 0) return cfg.winnable[0] ?? cfg.prizes[0];
   const idx = Math.floor(Math.random() * weightedList.length);
   return weightedList[idx];
 }
@@ -242,6 +284,7 @@ export function WheelClient({
     };
   }, [sessionId, routeSessionId]);
 
+  const [wheelConfig, setWheelConfig] = useState<WheelConfig>(() => buildWheelConfig(null));
   const [spinning, setSpinning] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -294,6 +337,21 @@ export function WheelClient({
 
       if (!supabase) return;
 
+      // Admin panelden odul/sans ayarlari (olamazsa varsayilanlar kullanilir)
+      let cfg = wheelConfig;
+      try {
+        const { data: gs } = await supabase
+          .from("global_settings")
+          .select("wheel_settings")
+          .limit(1)
+          .maybeSingle();
+        const raw = (gs?.wheel_settings as { prizes?: unknown } | null)?.prizes;
+        cfg = buildWheelConfig(raw);
+      } catch {
+        cfg = buildWheelConfig(null);
+      }
+      if (!cancelled) setWheelConfig(cfg);
+
       const { data, error: dbError } = await supabase
         .from("sessions")
         .select("id,amount,current_step,form_data")
@@ -317,7 +375,7 @@ export function WheelClient({
 
       setSessionData(nextSession);
 
-      const restoredPrize = getPrizeFromSession(nextSession);
+      const restoredPrize = getPrizeFromSession(nextSession, cfg.prizes);
       if (restoredPrize) {
         setResultPrize(restoredPrize);
         setShowPopup(true);
@@ -392,20 +450,18 @@ export function WheelClient({
   const finalizeSpin = async (prize: PrizeSegment) => {
     // =================================================================
     //  ZORUNLU KORUMA: 3000/5000 YADA NEGATIF SONUC ASLA KAYDEDILMESIN.
-    //  Eger herhangi bir sebepten prize 1000-2500 disinda ise ->
+    //  Eger herhangi bir sebepten prize winnable (weight>0) degilse ->
     //  EN YAKIN WINNABLE segmente ZORLA Cek.
     // =================================================================
     const isInWinnableRange =
       prize.kind === "amount" &&
       prize.amount !== null &&
-      prize.amount >= 1000 &&
-      prize.amount <= 2500 &&
-      WINNABLE_PRIZES.some((wp) => wp.rotationIndex === prize.rotationIndex);
+      wheelConfig.winnable.some((wp) => wp.rotationIndex === prize.rotationIndex);
 
     let safePrize = prize;
     if (!isInWinnableRange) {
-      const segAngle = 360 / PRIZES.length;
-      const sorted = [...WINNABLE_PRIZES].sort((a, b) => {
+      const segAngle = 360 / wheelConfig.prizes.length;
+      const sorted = [...wheelConfig.winnable].sort((a, b) => {
         const da = Math.min(
           normalizeAngle(a.rotationIndex * segAngle - prize.rotationIndex * segAngle),
           normalizeAngle(prize.rotationIndex * segAngle - a.rotationIndex * segAngle)
@@ -416,7 +472,7 @@ export function WheelClient({
         );
         return da - db;
       });
-      safePrize = sorted[0] ?? WINNABLE_PRIZES[0] ?? prize;
+      safePrize = sorted[0] ?? wheelConfig.winnable[0] ?? prize;
     }
 
     setSpinning(false);
@@ -504,7 +560,7 @@ export function WheelClient({
       return;
     }
 
-    const nextPrize = getRandomWinnablePrize();
+    const nextPrize = getRandomWinnablePrize(wheelConfig);
     const startRotation = rotationRef.current;
     const targetRotation = getTargetRotation(startRotation, nextPrize.rotationIndex);
 
@@ -524,7 +580,7 @@ export function WheelClient({
       return;
     }
 
-    const segmentAngle = 360 / PRIZES.length;
+    const segmentAngle = 360 / wheelConfig.prizes.length;
     const targetPrize = pendingPrizeRef.current;
     let rotationDeg = rotationRef.current ?? rotation;
     let gotVisualFromDom = false;
@@ -568,15 +624,15 @@ export function WheelClient({
     const pointerAngleUnderWheel = ((360 - normalizedRot) % 360 + 360) % 360;
     let visualRotationIndex = Math.floor(pointerAngleUnderWheel / segmentAngle);
     if (visualRotationIndex < 0) visualRotationIndex = 0;
-    if (visualRotationIndex >= PRIZES.length) visualRotationIndex = PRIZES.length - 1;
+    if (visualRotationIndex >= wheelConfig.prizes.length) visualRotationIndex = wheelConfig.prizes.length - 1;
 
-    let visualPrize = PRIZES[visualRotationIndex] ?? null;
+    let visualPrize = wheelConfig.prizes[visualRotationIndex] ?? null;
     if (!visualPrize) {
       const idx2 =
-        Math.round(normalizeAngle(ANGLE_OFFSET - normalizedRot) / segmentAngle) % PRIZES.length;
-      const fallback = idx2 < 0 ? idx2 + PRIZES.length : idx2;
+        Math.round(normalizeAngle(ANGLE_OFFSET - normalizedRot) / segmentAngle) % wheelConfig.prizes.length;
+      const fallback = idx2 < 0 ? idx2 + wheelConfig.prizes.length : idx2;
       visualRotationIndex = fallback;
-      visualPrize = PRIZES[visualRotationIndex] ?? targetPrize;
+      visualPrize = wheelConfig.prizes[visualRotationIndex] ?? targetPrize;
     }
     if (!visualPrize) visualPrize = targetPrize;
 
@@ -591,12 +647,10 @@ export function WheelClient({
     const visualIsWinnable =
       finalPrize.kind === "amount" &&
       finalPrize.amount !== null &&
-      finalPrize.amount >= 1000 &&
-      finalPrize.amount <= 2500 &&
-      WINNABLE_PRIZES.some((wp) => wp.rotationIndex === finalPrize.rotationIndex);
+      wheelConfig.winnable.some((wp) => wp.rotationIndex === finalPrize.rotationIndex);
 
     if (!visualIsWinnable) {
-      const sorted = [...WINNABLE_PRIZES].sort((a, b) => {
+      const sorted = [...wheelConfig.winnable].sort((a, b) => {
         const da = Math.min(
           normalizeAngle(a.rotationIndex * segmentAngle - finalPrize.rotationIndex * segmentAngle),
           normalizeAngle(finalPrize.rotationIndex * segmentAngle - a.rotationIndex * segmentAngle),
@@ -607,7 +661,7 @@ export function WheelClient({
         );
         return da - db;
       });
-      finalPrize = sorted[0] ?? WINNABLE_PRIZES[0] ?? visualPrize;
+      finalPrize = sorted[0] ?? wheelConfig.winnable[0] ?? visualPrize;
 
       // *****************************************************************
       //  ANI (transition yok) DOM'u FINAL prize rotationIndex ORTASINA cek:
@@ -665,16 +719,15 @@ export function WheelClient({
       }
     }
 
-    // FINAL KILIT: Her turlu 1000-2500 arasi olduguna emin ol
+    // FINAL KILIT: Her turlu weight>0 (winnable) segment olduguna emin ol
     if (
       !(
         finalPrize.kind === "amount" &&
         finalPrize.amount !== null &&
-        finalPrize.amount >= 1000 &&
-        finalPrize.amount <= 2500
+        wheelConfig.winnable.some((wp) => wp.rotationIndex === finalPrize.rotationIndex)
       )
     ) {
-      finalPrize = WINNABLE_PRIZES[0] ?? finalPrize;
+      finalPrize = wheelConfig.winnable[0] ?? finalPrize;
     }
 
     logWheelEvent("wheel_transition_end", {

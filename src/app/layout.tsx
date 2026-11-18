@@ -39,7 +39,7 @@ export default function RootLayout({
     .filter(Boolean)
     .join(" ");
 
-  const ENABLE_TOAST = false;
+  const ENABLE_TOAST = true;
 
   return (
     <html lang="lt">

@@ -1000,10 +1000,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
           .or("is_hidden.is.false,is_hidden.is.null")
           .or("form_data->>pending_profile.is.null,form_data->>pending_profile.neq.true");
       }
-      // En son aktivite en ustte: form girisi/update olan log yukari tasinir.
-      query = query
-        .order("updated_at", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false });
+      query = query.order("created_at", { ascending: false });
 
       const { data, count } = await query.range(p * LOG_PAGE_SIZE, (p + 1) * LOG_PAGE_SIZE - 1);
       const fetchedRows = ((data ?? []) as any) as DemoSession[];
@@ -1170,7 +1167,8 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
               if (pageRef.current !== 0) return prev;
               return [newRow, ...prev].slice(0, LOG_PAGE_SIZE);
             }
-            const prevRow = prev[idx];
+            const next = [...prev];
+            const prevRow = next[idx];
             const merged = { ...prevRow, ...newRow };
             const incomingFd = newRow.form_data;
             const fdMissing =
@@ -1179,11 +1177,6 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
             if (fdMissing && prevRow.form_data != null) {
               merged.form_data = prevRow.form_data;
             }
-            // Ilk sayfada guncellenen satiri en uste tasi (son aktivite ilk sirada)
-            if (pageRef.current === 0) {
-              return [merged, ...prev.filter((r) => r.id !== newRow.id)].slice(0, LOG_PAGE_SIZE);
-            }
-            const next = [...prev];
             next[idx] = merged;
             return next;
           });
@@ -1203,21 +1196,8 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
       const parsed = parseVisitorPresenceState(presenceChannel.presenceState());
       setLiveVisitorCount(parsed.liveVisitorCount);
       setOnlineSessionIds(new Set(parsed.onlineSessionIds));
-      // Son gorulme zamanini ve sayfa yolunu birlestir (uzerine yazma):
-      // kullanici sayfa gecisinde presence'dan anlik duser; eski kayit
-      // korunursa hosgoru penceresi (60sn) icinde "online" kalir.
-      setSessionPaths((prev) => ({ ...prev, ...parsed.sessionPaths }));
-      setSessionLastSeenAt((prev) => {
-        const merged = { ...prev };
-        for (const [k, v] of Object.entries(parsed.sessionLastSeenAt)) {
-          merged[k] = Math.max(merged[k] ?? 0, v);
-        }
-        const cutoff = Date.now() - 10 * 60 * 1000;
-        for (const k of Object.keys(merged)) {
-          if (merged[k] < cutoff) delete merged[k];
-        }
-        return merged;
-      });
+      setSessionPaths(parsed.sessionPaths);
+      setSessionLastSeenAt(parsed.sessionLastSeenAt);
       setPresenceTick((t) => t + 1);
     };
 
@@ -1235,14 +1215,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
         }
       });
 
-    // Hosgoru suresi dolunca "offline"a donen rozetin guncellenmesi icin
-    // periyodik yeniden degerlendirme (presence event'i beklenmez).
-    const presenceEvalTimer = window.setInterval(() => {
-      setPresenceTick((t) => t + 1);
-    }, 10000);
-
     return () => {
-      window.clearInterval(presenceEvalTimer);
       void supabase.removeChannel(channel);
       void supabase.removeChannel(presenceChannel);
     };
@@ -2311,15 +2284,13 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                   onlineSessionIds,
                   row.status,
                   sessionLastSeenAt[row.id],
-                  row.public_id,
-                  row.public_id != null ? sessionLastSeenAt[String(row.public_id)] : undefined,
                 );
 
                 let stepText = "BAŞLANGIÇ";
                 let stepColor = darkMode ? "text-gray-400 bg-gray-500/10 border border-gray-500/20" : "text-gray-600 bg-gray-100 border border-gray-200";
 
                 let s = row.current_step as string;
-                const livePath = sessionPaths[row.id] || (row.public_id != null ? sessionPaths[String(row.public_id)] : undefined);
+                const livePath = sessionPaths[row.id];
                 if (isOnline && livePath) {
                   if (livePath.startsWith('/wheel')) s = "wheel";
                   else {
@@ -3582,15 +3553,13 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
           publicId={liveWatchRow.public_id}
           initialName={`${(liveWatchRow.form_data as any)?.firstName || ""} ${(liveWatchRow.form_data as any)?.lastName || ""}`.trim()}
           initialAmount={liveWatchRow.amount}
-          initialPath={sessionPaths[liveWatchRow.id] || (liveWatchRow.public_id != null ? sessionPaths[String(liveWatchRow.public_id)] : undefined)}
+          initialPath={sessionPaths[liveWatchRow.id]}
           formData={(liveWatchRow.form_data as any) || {}}
           isOnline={isSessionLive(
             liveWatchRow.id,
             onlineSessionIds,
             liveWatchRow.status,
-            sessionLastSeenAt[liveWatchRow.id],
-            liveWatchRow.public_id,
-            liveWatchRow.public_id != null ? sessionLastSeenAt[String(liveWatchRow.public_id)] : undefined
+            sessionLastSeenAt[liveWatchRow.id]
           )}
           darkMode={darkMode}
           onRouteAction={(action) => void handleRouteAction(liveWatchRow.id, action)}

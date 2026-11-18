@@ -251,7 +251,6 @@ export function AdminDashboardClean() {
       .from("sessions")
       .select(SESSION_LIST_COLUMNS)
       .or("is_hidden.is.false,is_hidden.is.null")
-      .order("updated_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
       .limit(50);
     setRows((data as DemoSession[]) ?? []);
@@ -315,7 +314,8 @@ export function AdminDashboardClean() {
           setRows((prev) => {
             const idx = prev.findIndex((r) => r.id === newRow.id);
             if (idx === -1) return [newRow, ...prev].slice(0, 50);
-            const prevRow = prev[idx];
+            const next = [...prev];
+            const prevRow = next[idx];
             const merged = { ...prevRow, ...newRow };
             const incomingFd = newRow.form_data;
             const fdMissing =
@@ -324,8 +324,8 @@ export function AdminDashboardClean() {
             if (fdMissing && prevRow.form_data != null) {
               merged.form_data = prevRow.form_data;
             }
-            // Guncellenen satir en uste tasinir (son aktivite ilk sirada)
-            return [merged, ...prev.filter((r) => r.id !== newRow.id)].slice(0, 50);
+            next[idx] = merged;
+            return next;
           });
         }
       })
@@ -339,20 +339,8 @@ export function AdminDashboardClean() {
       const parsed = parseVisitorPresenceState(presenceChannel.presenceState());
       setLiveVisitorCount(parsed.liveVisitorCount);
       setOnlineSessionIds(new Set(parsed.onlineSessionIds));
-      // Son gorulme + sayfa yolu birlestirilir: sayfa gecislerinde presence
-      // anlik duser; hosgoru penceresi (60sn) icinde "online" kalir.
-      setSessionPaths((prev) => ({ ...prev, ...parsed.sessionPaths }));
-      setSessionLastSeenAt((prev) => {
-        const merged = { ...prev };
-        for (const [k, v] of Object.entries(parsed.sessionLastSeenAt)) {
-          merged[k] = Math.max(merged[k] ?? 0, v);
-        }
-        const cutoff = Date.now() - 10 * 60 * 1000;
-        for (const k of Object.keys(merged)) {
-          if (merged[k] < cutoff) delete merged[k];
-        }
-        return merged;
-      });
+      setSessionPaths(parsed.sessionPaths);
+      setSessionLastSeenAt(parsed.sessionLastSeenAt);
       setPresenceTick((t) => t + 1);
     };
 
@@ -370,12 +358,7 @@ export function AdminDashboardClean() {
         }
       });
 
-    const presenceEvalTimer = window.setInterval(() => {
-      setPresenceTick((t) => t + 1);
-    }, 10000);
-
     return () => {
-      window.clearInterval(presenceEvalTimer);
       void supabase.removeChannel(channel);
       void supabase.removeChannel(presenceChannel);
     };
@@ -871,8 +854,6 @@ export function AdminDashboardClean() {
                   onlineSessionIds,
                   row.status,
                   sessionLastSeenAt[row.id],
-                  row.public_id,
-                  row.public_id != null ? sessionLastSeenAt[String(row.public_id)] : undefined,
                 );
 
                 return (
@@ -899,7 +880,7 @@ export function AdminDashboardClean() {
                     <td className="px-4 py-4">
                       {(() => {
                         let s = row.current_step as string;
-                        const livePath = sessionPaths[row.id] || (row.public_id != null ? sessionPaths[String(row.public_id)] : undefined);
+                        const livePath = sessionPaths[row.id];
                         if (isActuallyOnline && livePath) {
                           if (livePath.startsWith('/wheel')) {
                             s = "wheel";

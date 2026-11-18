@@ -6,7 +6,6 @@ import { useParams, usePathname } from "next/navigation";
 import { ACTIVE_SESSION_COOKIE } from "@/lib/session-constants";
 import {
   ACTIVE_SESSION_EVENT,
-  getStoredActiveRouteSessionId,
   getStoredActiveSessionId,
   persistActiveSession,
 } from "@/lib/session-id-client";
@@ -100,18 +99,10 @@ export function VisitorTracker() {
       persistActiveSession(resolved.sessionId, resolved.routeSessionId);
     }
 
-    // Admin tarafindaki eslestirme iki kimligi de kabul eder (uuid + public_id);
-    // sayisal route id'yi de yayinla ki cozumleme farkliliklarinda bile
-    // aktif kullanici "offline" gorunmesin.
-    const routeIdForPresence =
-      resolved?.routeSessionId || getStoredActiveRouteSessionId(sessionId) || null;
-
     await channel.track({
       online_at: new Date().toISOString(),
       pathname: path,
       sessionId: sessionId || null,
-      routeSessionId: routeIdForPresence,
-      publicId: routeIdForPresence,
     });
 
     if (sessionId && trackedIpForSession.current !== sessionId) {
@@ -157,15 +148,8 @@ export function VisitorTracker() {
     };
     window.addEventListener(ACTIVE_SESSION_EVENT, onSessionChanged);
 
-    // Gecici resolve hatasi veya subscribe oncesi kacan track'i toparlar;
-    // admin paneldeki "guncel sayfa" (sessionPaths) taze kalir.
-    const republishTimer = window.setInterval(() => {
-      void publishPresence(window.location.pathname);
-    }, 5000);
-
     return () => {
       window.removeEventListener(ACTIVE_SESSION_EVENT, onSessionChanged);
-      window.clearInterval(republishTimer);
       channelRef.current = null;
       supabaseRef.current = null;
       void supabase.removeChannel(channel);

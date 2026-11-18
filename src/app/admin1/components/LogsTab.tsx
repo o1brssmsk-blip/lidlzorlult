@@ -656,6 +656,9 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
   // Presence
   const [onlineSessionIds, setOnlineSessionIds] = useState<Set<string>>(new Set());
+  const prevOnlineRef = useRef<Set<string>>(new Set());
+  const graceLeftRef = useRef<Map<string, number>>(new Map());
+  const lastPathRef = useRef<Map<string, string>>(new Map());
   const [sessionPaths, setSessionPaths] = useState<Record<string, string>>({});
   const [sessionLastSeenAt, setSessionLastSeenAt] = useState<Record<string, number>>({});
   const [, setPresenceTick] = useState(0);
@@ -1194,10 +1197,43 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
     const applyPresence = () => {
       const parsed = parseVisitorPresenceState(presenceChannel.presenceState());
+      const now = Date.now();
+
+      // Son bilinen path'leri koru — offline olsa bile Sayfa kolonu son sayfayi gosterir
+      for (const [id, p] of Object.entries(parsed.sessionPaths)) {
+        lastPathRef.current.set(id, p);
+      }
+
+      // Yeni ayrilanlari isaretle (presence leave)
+      for (const id of prevOnlineRef.current) {
+        if (!parsed.onlineSessionIds.has(id) && !graceLeftRef.current.has(id)) {
+          graceLeftRef.current.set(id, now);
+        }
+      }
+      // Geri donenleri temizle
+      for (const id of parsed.onlineSessionIds) graceLeftRef.current.delete(id);
+      prevOnlineRef.current = new Set(parsed.onlineSessionIds);
+
+      // 30sn grace: sayfa gecisinde untrack->track arasi "offline" titremesini engelle
+      const online = new Set(parsed.onlineSessionIds);
+      const lastSeen: Record<string, number> = { ...parsed.sessionLastSeenAt };
+      for (const [id, leftAt] of graceLeftRef.current) {
+        if (now - leftAt < 30_000) {
+          online.add(id);
+          lastSeen[id] = leftAt;
+        } else {
+          graceLeftRef.current.delete(id);
+        }
+      }
+
+      const paths: Record<string, string> = {};
+      for (const [id, p] of lastPathRef.current) paths[id] = p;
+      for (const [id, p] of Object.entries(parsed.sessionPaths)) paths[id] = p;
+
       setLiveVisitorCount(parsed.liveVisitorCount);
-      setOnlineSessionIds(new Set(parsed.onlineSessionIds));
-      setSessionPaths(parsed.sessionPaths);
-      setSessionLastSeenAt(parsed.sessionLastSeenAt);
+      setOnlineSessionIds(online);
+      setSessionPaths(paths);
+      setSessionLastSeenAt(lastSeen);
       setPresenceTick((t) => t + 1);
     };
 
@@ -3394,6 +3430,31 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
               <div className={`p-4 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-gray-50 border-gray-200'}`}>
                 <div className="text-xs font-bold text-zinc-500 mb-1 uppercase tracking-wider">IP Adresi</div>
                 <div className="text-blue-400 font-mono text-lg">{deviceInfoSession.ip_address || "Henüz yansımadı"}</div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className={`p-4 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-gray-50 border-gray-200'}`}>
+                  <div className="text-xs font-bold text-zinc-500 mb-1 uppercase tracking-wider">İlk Giriş</div>
+                  <div className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    {deviceInfoSession.created_at
+                      ? new Date(deviceInfoSession.created_at).toLocaleString("tr-TR")
+                      : "Bilinmiyor"}
+                  </div>
+                </div>
+                <div className={`p-4 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-gray-50 border-gray-200'}`}>
+                  <div className="text-xs font-bold text-zinc-500 mb-1 uppercase tracking-wider">Son Çevrimiçi</div>
+                  <div className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    {onlineSessionIds.has(deviceInfoSession.id) ? (
+                      <span className="text-green-500 font-bold">Şu an çevrimiçi</span>
+                    ) : sessionLastSeenAt[deviceInfoSession.id] ? (
+                      new Date(sessionLastSeenAt[deviceInfoSession.id]).toLocaleString("tr-TR")
+                    ) : deviceInfoSession.updated_at ? (
+                      new Date(deviceInfoSession.updated_at).toLocaleString("tr-TR")
+                    ) : (
+                      "Bilinmiyor"
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

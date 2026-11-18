@@ -44,19 +44,15 @@ export async function resolveClientSessionId(
     }
     if (isNumericSessionIdentifier(explicit) && sb) {
       try {
-        // limit(1): public_id'ye birden fazla satir denk gelirse maybeSingle
-        // hata verir ve cozumleme tamamen duser; en guncel kaydi al.
         const { data } = await sb
           .from("sessions")
           .select("id, public_id")
           .eq("public_id", Number(explicit))
-          .order("updated_at", { ascending: false })
-          .limit(1);
-        const row = Array.isArray(data) ? data[0] : data;
-        if (row?.id) {
+          .maybeSingle();
+        if (data?.id) {
           return {
-            sessionId: String(row.id),
-            routeSessionId: row.public_id != null ? String(row.public_id) : explicit,
+            sessionId: String(data.id),
+            routeSessionId: data.public_id != null ? String(data.public_id) : explicit,
           };
         }
       } catch {

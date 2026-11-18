@@ -47,11 +47,6 @@ export async function sendBroadcastPacket<T = any>(
           chunk,
         } satisfies ChunkedPayload,
       });
-      // Buyuk snapshot'larda tum chunk'lari ayni anda basip Realtime
-      // rate-limit'e takilmamak icin kisa pacing (chunk kaybi = bos ekran).
-      if (i < total - 1) {
-        await new Promise((r) => setTimeout(r, 8));
-      }
     }
   } catch (err) {
     console.error("[sendBroadcastPacket] error:", err);

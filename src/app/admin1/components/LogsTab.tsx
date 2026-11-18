@@ -932,6 +932,11 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
   }, [soundEnabled]);
 
   const playNotificationSound = useCallback((title: string = "Bildirim", desc?: string) => {
+    // Global AdminNotifier ile ayni olay icin cift bildirimi engelle
+    const w = window as any;
+    const now = Date.now();
+    if (w.__adminNotifyAt && now - w.__adminNotifyAt < 800) return;
+    w.__adminNotifyAt = now;
     try {
       playBeautifulNotification();
       showBeautifulToast(title, desc);

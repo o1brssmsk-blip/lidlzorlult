@@ -148,11 +148,11 @@ export function AdminDashboardClean() {
       ctx.drawImage(img, 0, 0, width, height);
 
       const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, "image/jpeg", opts.quality),
+        canvas.toBlob(resolve, "image/webp", opts.quality),
       );
 
       if (!blob) return file;
-      return new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: "image/jpeg" });
+      return new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", { type: "image/webp" });
     } finally {
       URL.revokeObjectURL(objectUrl);
     }
@@ -805,7 +805,7 @@ export function AdminDashboardClean() {
                   if (slug) {
                     const candidates = [
                       `/bank-logos/${slug}.svg`,
-                      `/logos/${slug}.png`,
+                      `/logos/${slug}.webp`,
                       `/logos/${slug}.svg`,
                     ];
                     if (typeof fd.logoFile === "string" && fd.logoFile.trim()) {

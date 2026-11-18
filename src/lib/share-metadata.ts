@@ -66,9 +66,9 @@ export async function buildShareMetadata(opts: {
   const imageUrl = resolveOgImage(ogImageUrl, origin);
   const imageType = /\.png($|\?)/i.test(imageUrl)
     ? "image/png"
-    : /\.webp($|\?)/i.test(imageUrl)
-      ? "image/webp"
-      : "image/jpeg";
+    : /\.(jpe?g)($|\?)/i.test(imageUrl)
+      ? "image/jpeg"
+      : "image/webp";
 
   const title = brandify(opts.title, campaignName);
   const description = brandify(opts.description, campaignName);

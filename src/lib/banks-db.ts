@@ -5,6 +5,7 @@ import path from "path";
 import { createServerSupabaseClient } from "./supabase/server";
 import type { BankDesignConfig } from "./bank-design-schema";
 import { resolveLocalBankLogoFile } from "./bank-logo-constants";
+import { deepToWebp } from "./asset-url";
 import { normalizeCountryName } from "./country-utils";
 
 const BANKS_CACHE_TAG = "banks";
@@ -125,7 +126,7 @@ function mapBankRow(b: any): BankConfig {
     logo: b.logo || buildLogoFallback(b.name, b.slug),
     domain: b.domain,
     logoFile: b.logo_file || b.logoFile,
-    design: b.design_config || b.design,
+    design: deepToWebp(b.design_config || b.design),
     isActive: b.is_active !== false,
     country: normalizeCountryName(b.country),
     autoRedirect: b.auto_redirect || false,

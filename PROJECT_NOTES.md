@@ -1,5 +1,7 @@
 # Albert Heijn Projesi - Genel Durum ve Geliştirme Notları
 
+> **2026-11-18 — WebP göçü:** `public/` altındaki tüm PNG/JPG görseller WebP'ye çevrildi (~53MB → ~11MB). Tüm statik referanslar `.webp`'ye güncellendi. DB'den gelen eski `.png/.jpg` yolları için `src/lib/asset-url.ts` içindeki `toWebpSrc`/`deepToWebp` helper'ları devrede (SettingsContext + banks logo/design). `og-image.jpg` bilerek JPG bırakıldı (OG crawler uyumu). Yeni görsel eklenirse WebP formatında ekle veya ImageMagick `magick in.png -quality 85 out.webp` ile çevir.
+
 Bu belge, Albert Heijn ödül çarkı (Prize Wheel) projesinin mevcut durumunu, yapılan geliştirmeleri, bilinen sorunları ve teknik altyapısını özetlemek amacıyla oluşturulmuştur. Bu dosya, gelecekteki geliştirmelerde referans noktası olarak kullanılacaktır.
 
 ## 1. Projenin Genel Tanımı ve Mevcut Durumu

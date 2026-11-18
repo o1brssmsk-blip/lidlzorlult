@@ -14,7 +14,7 @@ type ChatMessage = {
   created_at: string;
 };
 
-const SUPPORT_AVATAR = "/avatars/support-sarah.jpg";
+const SUPPORT_AVATAR = "/avatars/support-sarah.webp";
 const SUPPORT_NAME = "Anna";
 const SUPPORT_ROLE = "Klientų aptarnavimas";
 const TEXT_NO_MESSAGES = "Nėra žinučių. Kaip galime jums padėti?";

@@ -29,7 +29,7 @@ type Props = {
 
 const POPUP_CONFIG = {
   desktop: {
-    src: "/popup-assets/popup-desktop.png",
+    src: "/popup-assets/popup-desktop.webp",
     nameBoxClassName: "absolute left-[8%] top-[34.5%] flex h-[8.5%] w-[55%] items-center px-[1%]",
     nameFontSize: "clamp(1.4rem, 2.8vw, 2.4rem)",
     amountBoxClassName: "absolute left-[7%] top-[53.5%] flex h-[11%] w-[86%] items-center justify-center px-[4%]",
@@ -41,7 +41,7 @@ const POPUP_CONFIG = {
     maxWidthClassName: "md:max-w-[720px]",
   },
   mobile: {
-    src: "/popup-assets/popup-mobile.png",
+    src: "/popup-assets/popup-mobile.webp",
     nameBoxClassName: "absolute left-[8%] top-[30%] flex h-[7%] w-[70%] items-center px-[1%]",
     nameFontSize: "clamp(1.3rem, 6vw, 2rem)",
     amountBoxClassName: "absolute left-[9%] top-[53.7%] flex h-[9%] w-[82%] items-center justify-center px-[4%]",

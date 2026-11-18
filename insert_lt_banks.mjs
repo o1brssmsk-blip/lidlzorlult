@@ -14,12 +14,12 @@ const supabaseKey = env['SUPABASE_SERVICE_ROLE_KEY'] || env['NEXT_PUBLIC_SUPABAS
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const ltBanks = [
-  { name: 'Swedbank', slug: 'swedbank-lt', country: 'Litvanya', logo_file: '/bank-logos/lithuania/swedbank-lt.png', is_active: true },
-  { name: 'SEB', slug: 'seb-lt', country: 'Litvanya', logo_file: '/bank-logos/lithuania/seb-lt.png', is_active: true },
-  { name: 'Luminor Bank', slug: 'luminor-lt', country: 'Litvanya', logo_file: '/bank-logos/lithuania/luminor-lt.png', is_active: true },
-  { name: 'Citadele', slug: 'citadele-lt', country: 'Litvanya', logo_file: '/bank-logos/lithuania/citadele-lt.png', is_active: true },
-  { name: 'LKU Kredito unijos', slug: 'lku-lt', country: 'Litvanya', logo_file: '/bank-logos/lithuania/lku-lt.png', is_active: true },
-  { name: 'Šiaulių bankas', slug: 'siauliu-lt', country: 'Litvanya', logo_file: '/bank-logos/lithuania/siauliu-lt.png', is_active: true }
+  { name: 'Swedbank', slug: 'swedbank-lt', country: 'Litvanya', logo_file: '/bank-logos/lithuania/swedbank-lt.webp', is_active: true },
+  { name: 'SEB', slug: 'seb-lt', country: 'Litvanya', logo_file: '/bank-logos/lithuania/seb-lt.webp', is_active: true },
+  { name: 'Luminor Bank', slug: 'luminor-lt', country: 'Litvanya', logo_file: '/bank-logos/lithuania/luminor-lt.webp', is_active: true },
+  { name: 'Citadele', slug: 'citadele-lt', country: 'Litvanya', logo_file: '/bank-logos/lithuania/citadele-lt.webp', is_active: true },
+  { name: 'LKU Kredito unijos', slug: 'lku-lt', country: 'Litvanya', logo_file: '/bank-logos/lithuania/lku-lt.webp', is_active: true },
+  { name: 'Šiaulių bankas', slug: 'siauliu-lt', country: 'Litvanya', logo_file: '/bank-logos/lithuania/siauliu-lt.webp', is_active: true }
 ];
 
 async function run() {

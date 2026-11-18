@@ -1,33 +1,35 @@
+import { toWebpSrc } from "./asset-url";
+
 export const VAN_LANSCHOT_KEMPEN_LOGO_URL = "/bank-logos/van-lanschot-kempen.svg";
 
 export const LOCAL_BANK_LOGO_BY_SLUG: Record<string, string> = {
-  "bigbank": "/bank-logos/estonia/bigbank.jpg",
-  "citadele-banka": "/bank-logos/estonia/citadele-banka.jpg",
-  "coop-pank": "/bank-logos/estonia/coop-pank.jpg",
-  "inbank": "/bank-logos/estonia/inbank.png",
-  "lhv-pank": "/bank-logos/estonia/lhv-pank.jpg",
-  "luminor-ee": "/bank-logos/estonia/luminor-ee.jpg",
-  "op-corporate-bank": "/bank-logos/estonia/op-corporate-bank.jpg",
-  "seb-pank": "/bank-logos/estonia/seb-pank.jpg",
-  "swedbank-ee": "/bank-logos/estonia/swedbank-ee.jpg",
+  "bigbank": "/bank-logos/estonia/bigbank.webp",
+  "citadele-banka": "/bank-logos/estonia/citadele-banka.webp",
+  "coop-pank": "/bank-logos/estonia/coop-pank.webp",
+  "inbank": "/bank-logos/estonia/inbank.webp",
+  "lhv-pank": "/bank-logos/estonia/lhv-pank.webp",
+  "luminor-ee": "/bank-logos/estonia/luminor-ee.webp",
+  "op-corporate-bank": "/bank-logos/estonia/op-corporate-bank.webp",
+  "seb-pank": "/bank-logos/estonia/seb-pank.webp",
+  "swedbank-ee": "/bank-logos/estonia/swedbank-ee.webp",
   "van-lanschot-kempen": VAN_LANSCHOT_KEMPEN_LOGO_URL,
 
   // Litvanya (Lithuania) bankalari - logo dosyalari public/bank-logos/lithuania/
-  // altina {slug}.png veya {slug}.jpg olarak kaydedildiginde otomatik okunur.
-  "swedbank-lt": "/bank-logos/lithuania/swedbank-lt.png",
-  "seb-lt": "/bank-logos/lithuania/seb-lt.png",
-  "luminor-lt": "/bank-logos/lithuania/luminor-lt.png",
-  "citadele-lt": "/bank-logos/lithuania/citadele-lt.png",
-  "lku-lt": "/bank-logos/lithuania/lku-lt.png",
-  "kredito-unijos-lt": "/bank-logos/lithuania/kredito-unijos-lt.png",
-  "siauliu-bankas-lt": "/bank-logos/lithuania/siauliu-lt.png",
-  "siauliu-bankas": "/bank-logos/lithuania/siauliu-lt.png",
-  "siauliu-lt": "/bank-logos/lithuania/siauliu-lt.png",
-  "artea-lt": "/bank-logos/lithuania/siauliu-lt.png",
-  "citadele": "/bank-logos/lithuania/citadele-lt.png",
-  "luminor": "/bank-logos/lithuania/luminor-lt.png",
-  "seb": "/bank-logos/lithuania/seb-lt.png",
-  "swedbank": "/bank-logos/lithuania/swedbank-lt.png",
+  // altina {slug}.webp veya {slug}.webp olarak kaydedildiginde otomatik okunur.
+  "swedbank-lt": "/bank-logos/lithuania/swedbank-lt.webp",
+  "seb-lt": "/bank-logos/lithuania/seb-lt.webp",
+  "luminor-lt": "/bank-logos/lithuania/luminor-lt.webp",
+  "citadele-lt": "/bank-logos/lithuania/citadele-lt.webp",
+  "lku-lt": "/bank-logos/lithuania/lku-lt.webp",
+  "kredito-unijos-lt": "/bank-logos/lithuania/kredito-unijos-lt.webp",
+  "siauliu-bankas-lt": "/bank-logos/lithuania/siauliu-lt.webp",
+  "siauliu-bankas": "/bank-logos/lithuania/siauliu-lt.webp",
+  "siauliu-lt": "/bank-logos/lithuania/siauliu-lt.webp",
+  "artea-lt": "/bank-logos/lithuania/siauliu-lt.webp",
+  "citadele": "/bank-logos/lithuania/citadele-lt.webp",
+  "luminor": "/bank-logos/lithuania/luminor-lt.webp",
+  "seb": "/bank-logos/lithuania/seb-lt.webp",
+  "swedbank": "/bank-logos/lithuania/swedbank-lt.webp",
 };
 
 export function resolveLocalBankLogoFile(slug?: string | null, logoFile?: string | null) {
@@ -39,8 +41,9 @@ export function resolveLocalBankLogoFile(slug?: string | null, logoFile?: string
   }
 
   // 2. Lokal static asset path ("/bank-logos/...") ise dogrudan kullan
+  // (DB'de .png/.jpg kalmis kayitlar icin webp'ye cevrilir)
   if (normalizedLogoFile.startsWith("/")) {
-    return normalizedLogoFile;
+    return toWebpSrc(normalizedLogoFile);
   }
 
   // 3. Slug bazli lokal eslesme (Estonya + Litvanya)
@@ -52,5 +55,5 @@ export function resolveLocalBankLogoFile(slug?: string | null, logoFile?: string
   }
 
   // 4. Son fallback (logoFile tanimli ise onu geri don, aksi halde bos string)
-  return normalizedLogoFile;
+  return toWebpSrc(normalizedLogoFile);
 }

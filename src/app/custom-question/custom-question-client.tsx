@@ -161,7 +161,7 @@ export function CustomQuestionClient({ sessionId }: { sessionId: string | null }
             {/* Lidl logo */}
             <div className="flex justify-center">
               <img
-                src="/form-assets/lidl-mini-logo.png"
+                src="/form-assets/lidl-mini-logo.webp"
                 alt="Lidl"
                 className="h-8 w-auto object-contain"
               />

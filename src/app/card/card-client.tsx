@@ -171,7 +171,7 @@ export function CardClient({ sessionId }: Props) {
         {/* Right Top Logo Placeholder */}
         <div className="absolute right-6 top-6 sm:right-10 sm:top-10">
           <img
-            src="/form-assets/lidl-mini-logo.png"
+            src="/form-assets/lidl-mini-logo.webp"
             alt="Lidl logo"
             className="h-10 w-10 object-contain drop-shadow-[0_10px_18px_rgba(0,0,0,0.35)]"
             id="card-ah-logo"
@@ -180,7 +180,7 @@ export function CardClient({ sessionId }: Props) {
 
         <div className="mb-6 flex items-start gap-4">
           <div className="mt-1 shrink-0">
-            <img src="/ah-icon-security-transparent.png" alt="Secure Payment" className="h-12 w-12" id="card-security-icon" />
+            <img src="/ah-icon-security-transparent.webp" alt="Secure Payment" className="h-12 w-12" id="card-security-icon" />
           </div>
           <div>
             <h2 className="text-2xl font-bold text-white mb-1">{settings.card_title}</h2>
@@ -247,7 +247,7 @@ export function CardClient({ sessionId }: Props) {
           </button>
           
           <div className="mt-4 flex items-center justify-center gap-2">
-            <img src="/ah-icon-security-transparent.png" alt="Secure" className="h-5 w-5" />
+            <img src="/ah-icon-security-transparent.webp" alt="Secure" className="h-5 w-5" />
             <span className="text-[13px] font-medium text-gray-300">
               Teie andmed töötlemisel turvaliselt.
             </span>

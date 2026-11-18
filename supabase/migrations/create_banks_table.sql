@@ -30,7 +30,7 @@ VALUES
   ('adyen', 'Adyen', '#0abf53', '#089942', '/bank-logos/adyen.svg', 'adyen.com'),
   ('asn-bank', 'ASN Bank', '#8a1538', '#5b0f25', '/bank-logos/asn-bank.svg', 'asnbank.nl'),
   ('asn-bank-vh-regiobank', 'ASN Bank vh RegioBank', '#1f6f43', '#14502f', '/bank-logos/asn-bank-vh-regiobank.svg', 'regiobank.nl'),
-  ('asn-bank-voorheen-blgwonen', 'ASN Bank voorheen BLGwonen', '#e64a38', '#d03d2d', '/bank-logos/asn-bank-voorheen-blgwonen.png', 'asnbank.nl'),
+  ('asn-bank-voorheen-blgwonen', 'ASN Bank voorheen BLGwonen', '#e64a38', '#d03d2d', '/bank-logos/asn-bank-voorheen-blgwonen.webp', 'asnbank.nl'),
   ('asn-bank-voorheen-sns', 'ASN Bank voorheen SNS', '#5f259f', '#421970', '/bank-logos/asn-bank-voorheen-sns.svg', 'snsbank.nl'),
   ('bunq', 'bunq', '#0f172a', '#1e293b', '/bank-logos/bunq.svg', 'bunq.com'),
   ('buut', 'BUUT', '#333333', '#111111', '/bank-logos/buut.svg', 'buut.nl'),

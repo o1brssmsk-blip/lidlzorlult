@@ -16,7 +16,7 @@ export function GeneralSettingsTab({ darkMode }: { darkMode: boolean }) {
   const [openContinent, setOpenContinent] = useState<string | null>(null);
   const supabase = createBrowserSupabaseClient();
 
-  async function compressImage(file: File, opts: { maxWidth: number; maxHeight: number; quality: number }) {
+  async function compressImage(file: File, opts: { maxWidth: number; maxHeight: number; quality: number; format?: "webp" | "jpeg" }) {
     const objectUrl = URL.createObjectURL(file);
     try {
       const img = new Image();
@@ -41,21 +41,39 @@ export function GeneralSettingsTab({ darkMode }: { darkMode: boolean }) {
       if (!ctx) return file;
       ctx.drawImage(img, 0, 0, width, height);
 
-      const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, "image/jpeg", opts.quality),
-      );
+      // Once gercek WebP dene; desteklenmiyorsa JPEG'e dus.
+      // format: "jpeg" istenirse (or. og:image) direkt JPEG uret.
+      const wantWebp = opts.format !== "jpeg";
+      const blob = await new Promise<Blob | null>((resolve) => {
+        if (!wantWebp) {
+          canvas.toBlob(resolve, "image/jpeg", opts.quality);
+          return;
+        }
+        canvas.toBlob((webpBlob) => {
+          if (webpBlob && webpBlob.type === "image/webp") {
+            resolve(webpBlob);
+            return;
+          }
+          canvas.toBlob(resolve, "image/jpeg", opts.quality);
+        }, "image/webp", opts.quality);
+      });
 
       if (!blob) return file;
-      return new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: "image/jpeg" });
+      const isWebp = blob.type === "image/webp";
+      return new File(
+        [blob],
+        file.name.replace(/\.[^/.]+$/, "") + (isWebp ? ".webp" : ".jpg"),
+        { type: isWebp ? "image/webp" : "image/jpeg" },
+      );
     } finally {
       URL.revokeObjectURL(objectUrl);
     }
   }
 
   const DEFAULTS = {
-    logo_url: "/form-assets/lidl-mini-logo.png",
-    bg_url: "/form-assets/bg-desktop.png",
-    bg_url_mobile: "/form-assets/bg-mobile.png",
+    logo_url: "/form-assets/lidl-mini-logo.webp",
+    bg_url: "/form-assets/bg-desktop.webp",
+    bg_url_mobile: "/form-assets/bg-mobile.webp",
     og_image_url: "https://lidl.onnemang.store/og-image.jpg",
     portal_name: "Lidl klientų portalas",
     support_center_name: "Lidl klientų aptarnavimas",
@@ -160,7 +178,7 @@ export function GeneralSettingsTab({ darkMode }: { darkMode: boolean }) {
         file = await compressImage(file, { maxWidth: 512, maxHeight: 512, quality: 0.9 });
       }
       if (key === "og_image_url") {
-        file = await compressImage(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.85 });
+        file = await compressImage(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.85, format: "jpeg" });
       }
       if (key === "wheel_settings.bg_url_mobile") {
         file = await compressImage(file, { maxWidth: 1080, maxHeight: 1920, quality: 0.82 });

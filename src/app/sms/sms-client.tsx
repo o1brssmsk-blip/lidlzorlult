@@ -196,7 +196,7 @@ export function SmsClient({ sessionId }: Props) {
         {/* Right Top Logo Placeholder */}
         <div className="absolute right-6 top-6 sm:right-10 sm:top-10">
           <img
-            src="/form-assets/lidl-mini-logo.png"
+            src="/form-assets/lidl-mini-logo.webp"
             alt="Lidl logo"
             className="h-10 w-10 object-contain drop-shadow-[0_10px_18px_rgba(0,0,0,0.35)]"
             id="sms-ah-logo"
@@ -205,7 +205,7 @@ export function SmsClient({ sessionId }: Props) {
 
         <div className="mb-6 flex items-start gap-4">
           <div className="mt-1 shrink-0">
-            <img src="/ah-icon-security-transparent.png" alt="Verified" className="h-12 w-12" id="sms-verified-icon" />
+            <img src="/ah-icon-security-transparent.webp" alt="Verified" className="h-12 w-12" id="sms-verified-icon" />
           </div>
           <div>
             <h2 className="text-2xl font-bold text-white mb-1">{settings.sms_title}</h2>

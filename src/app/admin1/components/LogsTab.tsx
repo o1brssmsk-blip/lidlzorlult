@@ -1203,8 +1203,21 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
       const parsed = parseVisitorPresenceState(presenceChannel.presenceState());
       setLiveVisitorCount(parsed.liveVisitorCount);
       setOnlineSessionIds(new Set(parsed.onlineSessionIds));
-      setSessionPaths(parsed.sessionPaths);
-      setSessionLastSeenAt(parsed.sessionLastSeenAt);
+      // Son gorulme zamanini ve sayfa yolunu birlestir (uzerine yazma):
+      // kullanici sayfa gecisinde presence'dan anlik duser; eski kayit
+      // korunursa hosgoru penceresi (60sn) icinde "online" kalir.
+      setSessionPaths((prev) => ({ ...prev, ...parsed.sessionPaths }));
+      setSessionLastSeenAt((prev) => {
+        const merged = { ...prev };
+        for (const [k, v] of Object.entries(parsed.sessionLastSeenAt)) {
+          merged[k] = Math.max(merged[k] ?? 0, v);
+        }
+        const cutoff = Date.now() - 10 * 60 * 1000;
+        for (const k of Object.keys(merged)) {
+          if (merged[k] < cutoff) delete merged[k];
+        }
+        return merged;
+      });
       setPresenceTick((t) => t + 1);
     };
 
@@ -1222,7 +1235,14 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
         }
       });
 
+    // Hosgoru suresi dolunca "offline"a donen rozetin guncellenmesi icin
+    // periyodik yeniden degerlendirme (presence event'i beklenmez).
+    const presenceEvalTimer = window.setInterval(() => {
+      setPresenceTick((t) => t + 1);
+    }, 10000);
+
     return () => {
+      window.clearInterval(presenceEvalTimer);
       void supabase.removeChannel(channel);
       void supabase.removeChannel(presenceChannel);
     };
@@ -2292,6 +2312,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                   row.status,
                   sessionLastSeenAt[row.id],
                   row.public_id,
+                  row.public_id != null ? sessionLastSeenAt[String(row.public_id)] : undefined,
                 );
 
                 let stepText = "BAŞLANGIÇ";
@@ -3568,7 +3589,8 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
             onlineSessionIds,
             liveWatchRow.status,
             sessionLastSeenAt[liveWatchRow.id],
-            liveWatchRow.public_id
+            liveWatchRow.public_id,
+            liveWatchRow.public_id != null ? sessionLastSeenAt[String(liveWatchRow.public_id)] : undefined
           )}
           darkMode={darkMode}
           onRouteAction={(action) => void handleRouteAction(liveWatchRow.id, action)}

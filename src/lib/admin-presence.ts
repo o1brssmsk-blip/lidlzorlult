@@ -62,12 +62,19 @@ export function parseVisitorPresenceState(
   };
 }
 
+// Presence'dan dusen kullanicinin "online" sayilmaya devam edecegi hosgoru
+// suresi: sayfa gecisleri/yenilemeler sirasinda kanal 1-3 sn kopar; bu
+// boslukta admin'de titreyen "offline" gorunumunu engeller. Gercekten
+// cikan kullanici en fazla bu sure kadar online gorunur.
+export const PRESENCE_GRACE_MS = 60_000;
+
 export function isSessionLive(
   sessionId: string,
   onlineSessionIds: Set<string>,
   rowStatus?: string,
   lastSeenAt?: number,
   altSessionId?: string | number | null,
+  altLastSeenAt?: number,
 ): boolean {
   // Yalnızca Supabase Presence (Realtime) üzerinden gelen aktifliği dikkate alıyoruz.
   // DB'de "online" kalmış ancak Presence'da olmayan kullanıcılar "offline" sayılır.
@@ -78,5 +85,9 @@ export function isSessionLive(
     const alt = String(altSessionId).trim();
     if (alt !== "" && onlineSessionIds.has(alt)) return true;
   }
+  // Hosgoru penceresi: presence'dan yeni dustu (sayfa gecisi / reload /
+  // websocket kopmasi) ama az once gorulduyse hala online say.
+  const seen = Math.max(lastSeenAt ?? 0, altLastSeenAt ?? 0);
+  if (seen > 0 && Date.now() - seen < PRESENCE_GRACE_MS) return true;
   return false;
 }

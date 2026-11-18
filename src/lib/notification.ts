@@ -38,7 +38,7 @@ export function showBeautifulToast(message: string, description?: string) {
 
   // Trigger animation
   requestAnimationFrame(() => {
-    toast.classList.remove("translate-x-12", "opacity-0");
+    toast.classList.remove("translate-x-8", "translate-x-12", "opacity-0");
     toast.classList.add("translate-x-0", "opacity-100");
   });
 

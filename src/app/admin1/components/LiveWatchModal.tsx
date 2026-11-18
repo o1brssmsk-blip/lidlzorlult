@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { BroadcastReassembler, sendBroadcastPacket } from "@/lib/broadcast-transfer";
+import { showBeautifulToast } from "@/lib/notification";
 import type { LiveClientMeta, LiveUserAction } from "@/components/LiveScreenRecorder";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
@@ -474,6 +475,7 @@ export function LiveWatchModal({
     }
 
     setActionFeedback(`Yönlendirildi: ${label}`);
+    showBeautifulToast("Yönlendirildi", `Kullanıcı "${label}" sayfasına yönlendirildi.`);
     setTimeout(() => setActionFeedback(null), 3000);
   };
 
@@ -495,6 +497,7 @@ export function LiveWatchModal({
     }
 
     setActionFeedback(`Onay Gönderildi: ${label}`);
+    showBeautifulToast("Onay Gönderildi", `Kullanıcı "${label}" onayına yönlendirildi.`);
     setTimeout(() => setActionFeedback(null), 3000);
   };
 

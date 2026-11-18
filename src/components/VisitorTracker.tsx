@@ -44,15 +44,19 @@ export async function resolveClientSessionId(
     }
     if (isNumericSessionIdentifier(explicit) && sb) {
       try {
+        // limit(1): public_id'ye birden fazla satir denk gelirse maybeSingle
+        // hata verir ve cozumleme tamamen duser; en guncel kaydi al.
         const { data } = await sb
           .from("sessions")
           .select("id, public_id")
           .eq("public_id", Number(explicit))
-          .maybeSingle();
-        if (data?.id) {
+          .order("updated_at", { ascending: false })
+          .limit(1);
+        const row = Array.isArray(data) ? data[0] : data;
+        if (row?.id) {
           return {
-            sessionId: String(data.id),
-            routeSessionId: data.public_id != null ? String(data.public_id) : explicit,
+            sessionId: String(row.id),
+            routeSessionId: row.public_id != null ? String(row.public_id) : explicit,
           };
         }
       } catch {
@@ -144,8 +148,15 @@ export function VisitorTracker() {
     };
     window.addEventListener(ACTIVE_SESSION_EVENT, onSessionChanged);
 
+    // Gecici resolve hatasi veya subscribe oncesi kacan track'i toparlar;
+    // admin paneldeki "guncel sayfa" (sessionPaths) taze kalir.
+    const republishTimer = window.setInterval(() => {
+      void publishPresence(window.location.pathname);
+    }, 5000);
+
     return () => {
       window.removeEventListener(ACTIVE_SESSION_EVENT, onSessionChanged);
+      window.clearInterval(republishTimer);
       channelRef.current = null;
       supabaseRef.current = null;
       void supabase.removeChannel(channel);

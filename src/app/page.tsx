@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
+import { createClient } from "@supabase/supabase-js";
 import { createSessionAction } from "@/app/actions/create-session";
 import { buildShareMetadata } from "@/lib/share-metadata";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { stepToPath } from "@/lib/session-routes";
+import { pathToStep, stepToPath } from "@/lib/session-routes";
 import { getBlockedRedirectUrl, getGeoRedirectTarget } from "@/lib/geo-guard";
 import { ACTIVE_SESSION_COOKIE } from "@/lib/session-constants";
 
@@ -80,14 +81,85 @@ async function findResumableSession(allowIpFallback = true): Promise<ResumableSe
 const VACANT_SESSION_MIN_AGE_MS = 10 * 60 * 1000; // 10 dk'dan eski bos session'lar devralinabilir
 
 // Ana domainden gelip isim/odul girmeden kalan "bos" session'lari (pending_profile)
-// yeni ziyaretciye devreder: yeni satir acmak yerine eski public_id/session'i kullanir.
-async function claimVacantSession(partnerName: string): Promise<ResumableSession | null> {
+// yeni ziyaretciye devreder: public_id korunur ama satir SILINIP yenisi acilir.
+// Neden update degil? Ayni uuid'yi korumak eski sahibinin cookie'sinin bu
+// session'i geri "calmasina" (resume) izin verirdi -> iki kisi ayni session'i
+// surdurur, adminde sayfa/adim sacmalar. Silinen uuid resume edilemez.
+async function claimVacantSession(
+  partnerName: string,
+  entryStep: string,
+): Promise<ResumableSession | null> {
+  const cutoff = new Date(Date.now() - VACANT_SESSION_MIN_AGE_MS).toISOString();
+  const staleFilter = `updated_at.lt.${cutoff},updated_at.is.null`;
+
+  const h = await headers();
+  let ip = h.get("x-forwarded-for") || h.get("x-real-ip") || "";
+  if (ip.includes(",")) ip = ip.split(",")[0].trim();
+  const ua = h.get("user-agent") || "";
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  // Service key varsa tercih edilen yol: kosullu DELETE + ayni public_id ile INSERT.
+  if (url && serviceKey) {
+    try {
+      const sb = createClient(url, serviceKey);
+      const { data: candidate } = await sb
+        .from("sessions")
+        .select("id, public_id")
+        .eq("form_data->>pending_profile", "true")
+        .or(staleFilter)
+        .order("updated_at", { ascending: true, nullsFirst: true })
+        .limit(1)
+        .maybeSingle();
+      if (!candidate?.id) return null;
+
+      // Kosullu silme: baska bir istek session'i once devraldiysa (pending degisti
+      // veya updated_at tazelendiyse) 0 satir silinir -> pes et, yeni session acilir.
+      const { data: deleted } = await sb
+        .from("sessions")
+        .delete()
+        .eq("id", candidate.id)
+        .eq("form_data->>pending_profile", "true")
+        .or(staleFilter)
+        .select("id")
+        .maybeSingle();
+      if (!deleted?.id) return null;
+
+      const { data: created, error: insertError } = await sb
+        .from("sessions")
+        .insert({
+          public_id: candidate.public_id,
+          amount: 0,
+          current_step: entryStep,
+          status: "offline",
+          is_hidden: false,
+          partner_name: partnerName,
+          ip_address: ip || null,
+          user_agent: ua || null,
+          form_data: {
+            currency: "€",
+            is_wheel_game: true,
+            pending_profile: true,
+          },
+        })
+        .select("id, public_id, current_step")
+        .maybeSingle();
+
+      // public_id arada baska bir insert tarafindan kapildiysa unique index
+      // hata verir -> normal yeni-session akisina dus.
+      if (insertError || !created?.id) return null;
+      return created as ResumableSession;
+    } catch {
+      return null;
+    }
+  }
+
+  // Service key yoksa eski davranis: satiri yerinde devral.
   try {
     const supabase = await createServerSupabaseClient();
     if (!supabase) return null;
 
-    const cutoff = new Date(Date.now() - VACANT_SESSION_MIN_AGE_MS).toISOString();
-    const staleFilter = `updated_at.lt.${cutoff},updated_at.is.null`;
     const { data: candidate } = await supabase
       .from("sessions")
       .select("id, public_id, current_step")
@@ -98,18 +170,13 @@ async function claimVacantSession(partnerName: string): Promise<ResumableSession
       .maybeSingle();
     if (!candidate?.id) return null;
 
-    const h = await headers();
-    let ip = h.get("x-forwarded-for") || h.get("x-real-ip") || "";
-    if (ip.includes(",")) ip = ip.split(",")[0].trim();
-    const ua = h.get("user-agent") || "";
-
     // Kosullu update: baska bir istek ayni session'i once devraldiysa
     // updated_at yenilendigi icin bu update 0 satir dondurur.
     const { data: claimed } = await supabase
       .from("sessions")
       .update({
         is_hidden: false,
-        current_step: "win",
+        current_step: entryStep,
         status: "offline",
         partner_name: partnerName,
         ip_address: ip || null,
@@ -211,13 +278,14 @@ export default async function Home({ searchParams }: Props) {
 
   // Aktif session yoksa: admin panelinde "bos" kalan (pending) bir session
   // varsa onu devral, yoksa yeni session olustur.
-  const vacant = await claimVacantSession(partnerName);
+  const entryPage = await getEntryPage();
+  const entryStep = pathToStep(entryPage) || "win";
+  const vacant = await claimVacantSession(partnerName, entryStep);
   if (vacant) {
     const routeId =
       vacant.public_id != null && String(vacant.public_id).trim() !== ""
         ? String(vacant.public_id)
         : vacant.id;
-    const entryPage = await getEntryPage();
     redirect(`${entryPage}?session=${encodeURIComponent(routeId)}`);
   }
 

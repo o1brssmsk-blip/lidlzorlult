@@ -106,6 +106,12 @@ function normalizeRedirectUrl(raw: string): string {
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
+// Bot/crawler isteklerini gercek siteye yonlendirmek icin ayarli hedefi verir.
+export async function getGeoRedirectTarget(): Promise<string> {
+  const { redirectUrl } = await getGeoSettings();
+  return normalizeRedirectUrl(redirectUrl);
+}
+
 // Izin verilmeyen ulkeden geliyorsa yonlendirme URL'si dondurur; serbest ise null.
 // Crawler/bot UA'lari her zaman serbest (og:image onizlemesi bozulmasin).
 // Bos allowed_countries listesi = kisitlama yok. Ulke cozulemezse fail-open (girer).

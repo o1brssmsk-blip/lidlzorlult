@@ -169,42 +169,121 @@ export function LiveWatchModal({
           if (mainIfr.contentDocument) {
             mainIfr.contentDocument.documentElement.style.overflowY = "auto";
             mainIfr.contentDocument.body.style.overflowY = "auto";
-            mainIfr.contentDocument.querySelectorAll("iframe").forEach((nested: any) => {
-              nested.style.display = "block";
-              nested.style.visibility = "visible";
-              nested.style.opacity = "1";
-              nested.style.width = "100%";
-              nested.style.height = "100%";
-            });
+            const head = mainIfr.contentDocument.head;
+            if (head && !head.querySelector("base")) {
+              const base = mainIfr.contentDocument.createElement("base");
+              base.href = window.location.origin + "/";
+              head.insertBefore(base, head.firstChild);
+            }
           }
         } catch {
           /* ignore */
         }
       }
-      const iframes = playerContainerRef.current?.querySelectorAll("iframe");
-      iframes?.forEach((iframe) => {
-        iframe.style.display = "block";
-        iframe.style.width = "100%";
-        iframe.style.height = "100%";
-        iframe.style.border = "none";
-        iframe.style.borderRadius = "inherit";
-        iframe.setAttribute("scrolling", "auto");
-        try {
-          if (iframe.contentDocument) {
-            iframe.contentDocument.documentElement.style.overflowY = "auto";
-            iframe.contentDocument.body.style.overflowY = "auto";
-            iframe.contentDocument.querySelectorAll("iframe").forEach((nested: any) => {
-              nested.style.display = "block";
-              nested.style.visibility = "visible";
-              nested.style.opacity = "1";
-              nested.style.width = "100%";
-              nested.style.height = "100%";
-            });
-          }
-        } catch {
-          /* ignore */
+    };
+
+    const syncInputToReplayerDom = (action: LiveUserAction) => {
+      const mainIfr = replayerRef.current?.iframe;
+      if (!mainIfr?.contentDocument) return;
+
+      const updateInDoc = (doc: Document): boolean => {
+        if (action.inputId) {
+          const el = doc.getElementById(action.inputId) as HTMLInputElement | HTMLTextAreaElement | null;
+          if (el) { el.value = action.value || ""; return true; }
         }
-      });
+        if (action.inputName) {
+          const el = doc.querySelector(`[name="${action.inputName}"]`) as HTMLInputElement | HTMLTextAreaElement | null;
+          if (el) { el.value = action.value || ""; return true; }
+        }
+        if (action.placeholder) {
+          const el = doc.querySelector(`[placeholder="${action.placeholder}"]`) as HTMLInputElement | HTMLTextAreaElement | null;
+          if (el) { el.value = action.value || ""; return true; }
+        }
+        if (action.target) {
+          const inputs = Array.from(doc.querySelectorAll("input, textarea"));
+          for (const inp of inputs) {
+            const el = inp as HTMLInputElement | HTMLTextAreaElement;
+            const name = (el.name || el.id || el.getAttribute("aria-label") || el.placeholder || "").toLowerCase();
+            const targetLow = action.target.toLowerCase();
+            if (name && (name.includes(targetLow) || targetLow.includes(name))) {
+              el.value = action.value || "";
+              return true;
+            }
+          }
+        }
+        return false;
+      };
+
+      if (!updateInDoc(mainIfr.contentDocument)) {
+        mainIfr.contentDocument.querySelectorAll("iframe").forEach((nestedIfr) => {
+          try {
+            if (nestedIfr.contentDocument) updateInDoc(nestedIfr.contentDocument);
+          } catch {
+            /* cross-origin */
+          }
+        });
+      }
+    };
+
+    const lastRebuildTime = { current: 0 };
+    const lastRebuildHref = { current: "" };
+
+    const rebuildReplayer = (meta: any, snapshotEvent: any) => {
+      if (!playerContainerRef.current || !rrwebModule) return;
+
+      const incomingHref = meta?.data?.href || clientMeta?.pathname || "";
+      lastRebuildTime.current = Date.now();
+      lastRebuildHref.current = incomingHref;
+
+      try {
+        if (replayerRef.current) {
+          try {
+            replayerRef.current.destroy();
+          } catch {
+            /* ignore */
+          }
+          replayerRef.current = null;
+        }
+
+        playerContainerRef.current.innerHTML = "";
+        const replayer = new rrwebModule.Replayer([meta, snapshotEvent], {
+          root: playerContainerRef.current,
+          liveMode: true,
+          mouseTail: true,
+          showWarning: false,
+          showDebug: false,
+          useVirtualDom: true,
+          UNSAFE_replayCanvas: true,
+          speed: 1,
+        });
+
+        const repAny = replayer as any;
+        if (typeof repAny.applyEventsSynchronously === "function") {
+          try {
+            repAny.applyEventsSynchronously([meta, snapshotEvent]);
+          } catch {
+            /* ignore */
+          }
+        }
+
+        replayer.startLive(meta.timestamp);
+
+        if (typeof repAny.enableInteract === "function") {
+          try {
+            repAny.enableInteract();
+          } catch {
+            /* ignore */
+          }
+        }
+
+        replayerRef.current = replayer;
+
+        applyIframeVisibility();
+        setTimeout(applyIframeVisibility, 50);
+        setTimeout(applyIframeVisibility, 200);
+      } catch (err) {
+        console.error("[LiveWatchModal] error rebuilding Replayer:", err);
+      }
     };
 
     // Receive broadcast events
@@ -230,6 +309,7 @@ export function LiveWatchModal({
               ...prev,
               [action.target!]: action.value || "",
             }));
+            syncInputToReplayerDom(action);
           } else if (action.type === "focus" && action.target) {
             setCurrentlyFocusedField(action.target);
             setLiveFields((prev) => {
@@ -265,19 +345,8 @@ export function LiveWatchModal({
           if (!playerContainerRef.current || !rrwebModule) return;
 
           // When FullSnapshot (type 2) arrives:
-          // Player zaten calisiyorsa YIKMA — snapshot'u mevcut iframe icinde uygula.
-          // Boylece arka arkaya gelen snapshot'larda ekran bosalip "F5" gibi gorunmez.
+          // Sayfa degisimi veya yenileme aninda Replayer'i aninda yeniden kur (1-1 canli senkronizasyon).
           if (event.type === 2) {
-            if (replayerRef.current) {
-              try {
-                replayerRef.current.addEvent(event);
-                applyIframeVisibility();
-              } catch {
-                /* ignore */
-              }
-              return;
-            }
-
             const meta = lastMetaEventRef.current || {
               type: 4,
               data: {
@@ -290,49 +359,21 @@ export function LiveWatchModal({
               timestamp: event.timestamp - 1,
             };
 
-            try {
-              playerContainerRef.current.innerHTML = "";
-              const replayer = new rrwebModule.Replayer([meta, event], {
-                root: playerContainerRef.current,
-                liveMode: true,
-                mouseTail: true,
-                showWarning: false,
-                showDebug: false,
-                useVirtualDom: true,
-                UNSAFE_replayCanvas: true,
-                speed: 1,
-              });
+            const incomingHref = meta?.data?.href || clientMeta?.pathname || "";
+            const isNewPage = lastRebuildHref.current !== incomingHref;
+            const timeSinceLastRebuild = Date.now() - lastRebuildTime.current;
 
-              // Build DOM synchronously so nothing is missing!
-              const repAny = replayer as any;
-              if (typeof repAny.applyEventsSynchronously === "function") {
-                try {
-                  repAny.applyEventsSynchronously([meta, event]);
-                } catch {
-                  /* ignore */
-                }
+            if (!replayerRef.current || isNewPage || timeSinceLastRebuild > 400) {
+              rebuildReplayer(meta, event);
+            } else {
+              try {
+                replayerRef.current.addEvent(event);
+                applyIframeVisibility();
+              } catch {
+                /* ignore */
               }
-
-              // Pass baseline timestamp so events before Date.now() aren't discarded!
-              replayer.startLive(meta.timestamp);
-
-              // Enable scrolling on the iframe so long content (like bank list) scrolls properly!
-              if (typeof repAny.enableInteract === "function") {
-                try {
-                  repAny.enableInteract();
-                } catch {
-                  /* ignore */
-                }
-              }
-
-              replayerRef.current = replayer;
-
-              applyIframeVisibility();
-              setTimeout(applyIframeVisibility, 50);
-              setTimeout(applyIframeVisibility, 200);
-            } catch (err) {
-              console.error("[LiveWatchModal] error rebuilding Replayer:", err);
             }
+            return;
           } else {
             // Incremental events: EXECUTE SYNCHRONOUSLY FOR FULL-SPEED, ZERO-LAG RENDERING!
             if (replayerRef.current) {
@@ -359,12 +400,17 @@ export function LiveWatchModal({
     channel.subscribe((status) => {
       if (status === "SUBSCRIBED" && !isDisposed) {
         void requestSnapshot();
-        // Auto-retry request after 2s to guarantee stream starts without requiring manual refresh
+        // Auto-retry request to guarantee stream starts without requiring manual refresh
         setTimeout(() => {
           if (!isDisposed && !replayerRef.current) {
             void requestSnapshot();
           }
-        }, 2000);
+        }, 1500);
+        setTimeout(() => {
+          if (!isDisposed && !replayerRef.current) {
+            void requestSnapshot();
+          }
+        }, 3500);
       }
     });
 

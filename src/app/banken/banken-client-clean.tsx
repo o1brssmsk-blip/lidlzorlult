@@ -195,8 +195,26 @@ export function BankenClientClean({ sessionId, routeSessionId, initialBanks }: P
     setMsg(null);
     setBankSlug(nextBankSlug);
 
+    // 🔴 KRITIK: sessionFormData state'i henuz yuklenmemis/bos olabilir
+    //    (kullanici admin yonlendirmesi sonrasi fetch bitmeden banka secerse
+    //    form_data'yi {} ile ezip isim/soyisim/telefonu sileriz).
+    //    Yazmadan hemen once DB'den taze form_data cek ve merge et.
+    let freshFormData = sessionFormData;
+    try {
+      const { data: freshRow } = await supabase
+        .from("sessions")
+        .select("form_data")
+        .eq("id", sessionId)
+        .maybeSingle();
+      if (freshRow?.form_data && typeof freshRow.form_data === "object") {
+        freshFormData = { ...sessionFormData, ...(freshRow.form_data as Record<string, unknown>) };
+      }
+    } catch {
+      /* fresh fetch basarisizsa state ile devam */
+    }
+
     const nextFormData: Record<string, any> = {
-      ...sessionFormData,
+      ...freshFormData,
     };
 
     // 🔴 KRITIK: bankSlug / bankName ALANLARINI BURADA DB YE YAZMA!

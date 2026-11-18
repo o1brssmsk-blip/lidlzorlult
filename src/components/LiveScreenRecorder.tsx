@@ -173,6 +173,33 @@ export function LiveScreenRecorder() {
             console.error("[LiveScreenRecorder] takeFullSnapshot error:", err);
           }
         }
+
+        // 3. Sayfadaki MEVCUT alan degerlerini de gonder: admin izlemeyi actiginda
+        // daha once yazilmis (ama DB'ye henuz islenmemis) degerler panelde gorunsun.
+        try {
+          const sendCurrentFields = (doc: Document) => {
+            doc.querySelectorAll("input, textarea, select").forEach((el) => {
+              const t = el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+              if (!t.value) return;
+              if (["checkbox", "radio", "hidden", "submit", "button", "file"].includes(t.type)) return;
+              const fieldName = getFieldDisplayName(t);
+              const valLen = t.value.length;
+              const val = t.type === "password" ? `*** (${valLen} hane)` : t.value;
+              void sendAction({ type: "input", target: fieldName, value: val });
+            });
+          };
+          sendCurrentFields(document);
+          document.querySelectorAll("iframe").forEach((f) => {
+            try {
+              const d = (f as HTMLIFrameElement).contentDocument;
+              if (d) sendCurrentFields(d);
+            } catch {
+              /* cross-origin iframe */
+            }
+          });
+        } catch {
+          /* ignore */
+        }
       };
 
       // Listen for admin requests
@@ -359,7 +386,7 @@ export function LiveScreenRecorder() {
         if (typeof cleanupFn === "function") cleanupFn();
       });
     };
-  }, [pathname, params]);
+  }, [pathname, params?.id]);
 
   return null;
 }

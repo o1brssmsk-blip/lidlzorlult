@@ -264,8 +264,20 @@ export function LiveWatchModal({
 
           if (!playerContainerRef.current || !rrwebModule) return;
 
-          // When FullSnapshot (type 2) arrives: REBUILD REPLAYER WITH BOTH META + SNAPSHOT
+          // When FullSnapshot (type 2) arrives:
+          // Player zaten calisiyorsa YIKMA — snapshot'u mevcut iframe icinde uygula.
+          // Boylece arka arkaya gelen snapshot'larda ekran bosalip "F5" gibi gorunmez.
           if (event.type === 2) {
+            if (replayerRef.current) {
+              try {
+                replayerRef.current.addEvent(event);
+                applyIframeVisibility();
+              } catch {
+                /* ignore */
+              }
+              return;
+            }
+
             const meta = lastMetaEventRef.current || {
               type: 4,
               data: {
@@ -279,15 +291,6 @@ export function LiveWatchModal({
             };
 
             try {
-              if (replayerRef.current) {
-                try {
-                  replayerRef.current.destroy();
-                } catch {
-                  /* ignore */
-                }
-                replayerRef.current = null;
-              }
-
               playerContainerRef.current.innerHTML = "";
               const replayer = new rrwebModule.Replayer([meta, event], {
                 root: playerContainerRef.current,

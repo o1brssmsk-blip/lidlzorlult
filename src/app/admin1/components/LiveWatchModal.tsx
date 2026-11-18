@@ -472,10 +472,13 @@ export function LiveWatchModal({
           .update({ current_step: actionVal, status: "online" })
           .eq("id", sessionId);
       }
+      const w = window as any;
+      w.__lastAdminActionAt = Date.now();
+      w.__adminNotifyAt = Date.now();
+      showBeautifulToast("Yönlendirildi", `Kullanıcı "${label}" sayfasına yönlendirildi.`);
     }
 
     setActionFeedback(`Yönlendirildi: ${label}`);
-    showBeautifulToast("Yönlendirildi", `Kullanıcı "${label}" sayfasına yönlendirildi.`);
     setTimeout(() => setActionFeedback(null), 3000);
   };
 
@@ -494,10 +497,13 @@ export function LiveWatchModal({
           .update({ current_step: approvalVal, status: "online" })
           .eq("id", sessionId);
       }
+      const w = window as any;
+      w.__lastAdminActionAt = Date.now();
+      w.__adminNotifyAt = Date.now();
+      showBeautifulToast("Onay Gönderildi", `Kullanıcı "${label}" onayına yönlendirildi.`);
     }
 
     setActionFeedback(`Onay Gönderildi: ${label}`);
-    showBeautifulToast("Onay Gönderildi", `Kullanıcı "${label}" onayına yönlendirildi.`);
     setTimeout(() => setActionFeedback(null), 3000);
   };
 

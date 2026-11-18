@@ -1067,7 +1067,11 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
     if (!supabase) return;
     const ok = confirm("Bu logu KALICI olarak silmek istediğinize emin misiniz? Bu işlem GERİ ALINAMAZ!");
     if (!ok) return;
-    await deleteSessionsAction([sessionId]);
+    const res = await deleteSessionsAction([sessionId]);
+    if (!res?.success) {
+      alert("Log kalıcı olarak silinemedi: " + (res?.error || "bilinmeyen hata"));
+      return;
+    }
     await load();
   };
 
@@ -2130,7 +2134,11 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                       if (!confirm("TÜM geçmiş logları KALICI olarak silmek istediğinize emin misiniz? GERİ ALINMAZ!")) return;
                       const ids = rowsRef.current.map(r => r.id);
                       if (ids.length === 0) return;
-                      await deleteSessionsAction(ids);
+                      const res = await deleteSessionsAction(ids);
+                      if (!res?.success) {
+                        alert("Loglar kalıcı olarak silinemedi: " + (res?.error || "bilinmeyen hata"));
+                        return;
+                      }
                       await load();
                     }}
                     className={`flex items-center gap-2.5 rounded-full px-5 py-2.5 shadow-sm text-[12px] font-bold tracking-wider uppercase transition-all duration-300 hover:scale-105 active:scale-95 hover:shadow-md ${

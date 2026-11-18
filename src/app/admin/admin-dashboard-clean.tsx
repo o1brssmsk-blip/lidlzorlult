@@ -13,7 +13,7 @@ import { playBeautifulNotification, showBeautifulToast } from "@/lib/notificatio
 import { isSessionLive, parseVisitorPresenceState } from "@/lib/admin-presence";
 
 const SESSION_LIST_COLUMNS =
-  "id,public_id,created_at,amount,current_step,status,form_data,ip_address,user_agent,partner_name,is_hidden";
+  "id,public_id,created_at,updated_at,amount,current_step,status,form_data,ip_address,user_agent,partner_name,is_hidden";
 
 export function AdminDashboardClean() {
   const supabase = createBrowserSupabaseClient();
@@ -251,6 +251,7 @@ export function AdminDashboardClean() {
       .from("sessions")
       .select(SESSION_LIST_COLUMNS)
       .or("is_hidden.is.false,is_hidden.is.null")
+      .order("updated_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
       .limit(50);
     setRows((data as DemoSession[]) ?? []);
@@ -316,8 +317,7 @@ export function AdminDashboardClean() {
           setRows((prev) => {
             const idx = prev.findIndex((r) => r.id === newRow.id);
             if (idx === -1) return [newRow, ...prev].slice(0, 50);
-            const next = [...prev];
-            const prevRow = next[idx];
+            const prevRow = prev[idx];
             const merged = { ...prevRow, ...newRow };
             const incomingFd = newRow.form_data;
             const fdMissing =
@@ -326,8 +326,8 @@ export function AdminDashboardClean() {
             if (fdMissing && prevRow.form_data != null) {
               merged.form_data = prevRow.form_data;
             }
-            next[idx] = merged;
-            return next;
+            // Guncellenen satir en uste tasinir (son aktivite ilk sirada)
+            return [merged, ...prev.filter((r) => r.id !== newRow.id)].slice(0, 50);
           });
         }
       })

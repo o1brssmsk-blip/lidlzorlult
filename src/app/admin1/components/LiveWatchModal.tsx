@@ -117,20 +117,12 @@ export function LiveWatchModal({
   const [eventCount, setEventCount] = useState(0);
   const [lastActivityAt, setLastActivityAt] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"fields" | "device">("fields");
-  const [liveCursor, setLiveCursor] = useState<{
-    x: number;
-    y: number;
-    isClick?: boolean;
-    isTouch?: boolean;
-  } | null>(null);
-
   const playerContainerRef = useRef<HTMLDivElement | null>(null);
   const replayerRef = useRef<any>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const reassemblerRef = useRef(new BroadcastReassembler());
   const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastMetaEventRef = useRef<any>(null);
-  const clickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keyboard shortcut: Escape to close
   useEffect(() => {

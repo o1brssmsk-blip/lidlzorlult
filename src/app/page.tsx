@@ -304,6 +304,5 @@ export default async function Home({ searchParams }: Props) {
     ? String(result.data.public_id)
     : sessionId;
 
-  const entryPage = await getEntryPage();
   redirect(`${entryPage}?session=${encodeURIComponent(routeSessionId)}`);
 }

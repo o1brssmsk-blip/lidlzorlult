@@ -915,14 +915,14 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
   const [transferAmountInput, setTransferAmountInput] = useState("");
   const [transferMethodInput, setTransferMethodInput] = useState<"smartid" | "mobileid">("smartid");
 
-  const [soundEnabled, setSoundEnabled] = useState(false);
-  const soundEnabledRef = useRef(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const soundEnabledRef = useRef(true);
 
   useEffect(() => {
     const savedSound = localStorage.getItem('admin1SoundEnabled');
-    if (savedSound === 'true') {
-      setSoundEnabled(true);
-      soundEnabledRef.current = true;
+    if (savedSound === 'false') {
+      setSoundEnabled(false);
+      soundEnabledRef.current = false;
     }
   }, []);
 

@@ -854,6 +854,7 @@ export function AdminDashboardClean() {
                   onlineSessionIds,
                   row.status,
                   sessionLastSeenAt[row.id],
+                  row.public_id,
                 );
 
                 return (
@@ -880,7 +881,7 @@ export function AdminDashboardClean() {
                     <td className="px-4 py-4">
                       {(() => {
                         let s = row.current_step as string;
-                        const livePath = sessionPaths[row.id];
+                        const livePath = sessionPaths[row.id] || (row.public_id != null ? sessionPaths[String(row.public_id)] : undefined);
                         if (isActuallyOnline && livePath) {
                           if (livePath.startsWith('/wheel')) {
                             s = "wheel";

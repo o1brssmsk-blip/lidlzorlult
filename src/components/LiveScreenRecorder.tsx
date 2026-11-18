@@ -5,7 +5,11 @@ import { useParams, usePathname } from "next/navigation";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { resolveClientSessionId } from "@/components/VisitorTracker";
 import { sendBroadcastPacket } from "@/lib/broadcast-transfer";
-import { ACTIVE_SESSION_EVENT } from "@/lib/session-id-client";
+import {
+  ACTIVE_SESSION_EVENT,
+  getStoredActiveSessionId,
+  persistActiveSession,
+} from "@/lib/session-id-client";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 export type LiveClientMeta = {
@@ -122,6 +126,16 @@ export function LiveScreenRecorder() {
 
       if (!sessionId || isDisposed || !supabase) return;
       currentSessionIdRef.current = sessionId;
+
+      // Cozulen session'i kalici yap: presence + sonraki sayfalar ayni
+      // uuid'ye kilitlensin (offline gorunme / yanlis kanal engeli).
+      try {
+        if (resolved && getStoredActiveSessionId() !== resolved.sessionId) {
+          persistActiveSession(resolved.sessionId, resolved.routeSessionId);
+        }
+      } catch {
+        /* best-effort */
+      }
 
       let rrweb: typeof import("rrweb") | null = null;
       try {
@@ -278,6 +292,18 @@ export function LiveScreenRecorder() {
         if (status === "SUBSCRIBED" && !isDisposed) {
           await sendMeta();
           await sendFullSnapshotFlow();
+          // React hydration + async icerik (banka listeleri, logolar) oturana
+          // kadar yedek snapshot'lar: ilk kare kacsa bile ekran dolacak.
+          setTimeout(() => {
+            if (!isDisposed && isStreamingRef.current) {
+              void sendFullSnapshotFlow();
+            }
+          }, 400);
+          setTimeout(() => {
+            if (!isDisposed && isStreamingRef.current) {
+              void sendFullSnapshotFlow();
+            }
+          }, 1200);
         }
       });
 
@@ -465,7 +491,10 @@ export function LiveScreenRecorder() {
 
     let cleanupPromise = initRecorder();
 
-    const onSessionChanged = () => {
+    const onSessionChanged = (e: Event) => {
+      const newSid = (e as CustomEvent)?.detail?.sessionId;
+      // Zaten dogru session'in kanalindaysak gereksiz yikim/kurulum yapma.
+      if (newSid && newSid === currentSessionIdRef.current) return;
       void cleanupPromise.then((cleanupFn) => {
         if (typeof cleanupFn === "function") cleanupFn();
       });

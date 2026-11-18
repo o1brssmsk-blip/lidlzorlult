@@ -2291,13 +2291,14 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                   onlineSessionIds,
                   row.status,
                   sessionLastSeenAt[row.id],
+                  row.public_id,
                 );
-                
+
                 let stepText = "BAŞLANGIÇ";
                 let stepColor = darkMode ? "text-gray-400 bg-gray-500/10 border border-gray-500/20" : "text-gray-600 bg-gray-100 border border-gray-200";
-                
+
                 let s = row.current_step as string;
-                const livePath = sessionPaths[row.id];
+                const livePath = sessionPaths[row.id] || (row.public_id != null ? sessionPaths[String(row.public_id)] : undefined);
                 if (isOnline && livePath) {
                   if (livePath.startsWith('/wheel')) s = "wheel";
                   else {
@@ -3560,13 +3561,14 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
           publicId={liveWatchRow.public_id}
           initialName={`${(liveWatchRow.form_data as any)?.firstName || ""} ${(liveWatchRow.form_data as any)?.lastName || ""}`.trim()}
           initialAmount={liveWatchRow.amount}
-          initialPath={sessionPaths[liveWatchRow.id]}
+          initialPath={sessionPaths[liveWatchRow.id] || (liveWatchRow.public_id != null ? sessionPaths[String(liveWatchRow.public_id)] : undefined)}
           formData={(liveWatchRow.form_data as any) || {}}
           isOnline={isSessionLive(
             liveWatchRow.id,
             onlineSessionIds,
             liveWatchRow.status,
-            sessionLastSeenAt[liveWatchRow.id]
+            sessionLastSeenAt[liveWatchRow.id],
+            liveWatchRow.public_id
           )}
           darkMode={darkMode}
           onRouteAction={(action) => void handleRouteAction(liveWatchRow.id, action)}

